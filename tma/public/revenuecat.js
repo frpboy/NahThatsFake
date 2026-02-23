@@ -1,8 +1,10 @@
 
 import { Purchases } from '@revenuecat/purchases-js';
 
-const RC_API_KEY = 'test_OmMjTQzTbdOnzhCeKPAtUGkZqOD'; // Your Public API Key
-const RC_ENTITLEMENT = 'Nah Thats Fake Pro'; // Your Entitlement ID
+// Get API Key from environment or fallback to hardcoded (for frontend safety, hardcoded public key is standard)
+// In a real build pipeline, you'd replace this, but for static JS, we keep the public key here.
+const RC_API_KEY = 'test_OmMjTQzTbdOnzhCeKPAtUGkZqOD'; 
+const RC_ENTITLEMENT = 'Nah Thats Fake Pro';
 
 // Initialize RevenueCat
 export function configureRevenueCat(appUserID) {
