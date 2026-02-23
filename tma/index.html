@@ -221,6 +221,25 @@
         <div id="error" class="error hidden"></div>
 
         <div id="main-content" class="hidden">
+            <!-- Admin Dashboard (Hidden by default) -->
+            <div id="admin-dashboard" class="card hidden">
+                <h3>👑 Admin Dashboard</h3>
+                <div class="stats-grid">
+                    <div class="stat-card" style="background: #333;">
+                        <span class="stat-number" id="admin-users">-</span>
+                        <span class="stat-label">Total Users</span>
+                    </div>
+                    <div class="stat-card" style="background: #c62828;">
+                        <span class="stat-number" id="admin-banned">-</span>
+                        <span class="stat-label">Banned</span>
+                    </div>
+                    <div class="stat-card" style="background: #2e7d32;">
+                        <span class="stat-number" id="admin-checks">-</span>
+                        <span class="stat-label">Total Checks</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Stats Section -->
             <div class="stats-grid">
                 <div class="stat-card">
@@ -284,6 +303,29 @@
 
             // Apply theme
             applyTheme();
+        }
+
+        // Check if user is admin
+        function checkAdmin() {
+            // Replace with your actual Owner ID
+            const OWNER_ID = 238776614; 
+            
+            if (user.id === OWNER_ID) {
+                document.getElementById('admin-dashboard').classList.remove('hidden');
+                loadAdminStats();
+            }
+        }
+
+        // Load admin stats
+        function loadAdminStats() {
+            fetch('/api/admin/stats')
+                .then(r => r.json())
+                .then(d => {
+                    document.getElementById('admin-users').textContent = d.users;
+                    document.getElementById('admin-banned').textContent = d.banned;
+                    document.getElementById('admin-checks').textContent = d.checks;
+                })
+                .catch(e => console.error('Admin stats error:', e));
         }
 
         // Apply Telegram theme

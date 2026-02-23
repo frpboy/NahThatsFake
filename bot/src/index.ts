@@ -288,6 +288,107 @@ bot.command('stats', async (ctx) => {
   });
 });
 
+// Command: /ban <id> <reason>
+bot.command('ban', async (ctx) => {
+  if (!isOwner(ctx)) return;
+
+  const args = ctx.message?.text.split(' ');
+  if (!args || args.length < 2) {
+    return ctx.reply('Usage: /ban <userId> [reason]');
+  }
+
+  const userId = args[1];
+  const reason = args.slice(2).join(' ') || 'Violation';
+
+  const { error } = await supabase
+    .from('users')
+    .update({ 
+      is_banned: true, 
+      banned_reason: reason, 
+      banned_at: new Date().toISOString() 
+    })
+    .eq('telegram_user_id', userId);
+
+  if (error) {
+    return ctx.reply('❌ Failed to ban user. Check user ID.');
+  }
+
+  ctx.reply(`🚫 User ${userId} banned. Reason: ${reason}`);
+});
+
+// Command: /unban <id>
+bot.command('unban', async (ctx) => {
+  if (!isOwner(ctx)) return;
+
+  const args = ctx.message?.text.split(' ');
+  if (!args || args.length !== 2) {
+    return ctx.reply('Usage: /unban <userId>');
+  }
+
+  const userId = args[1];
+
+  const { error } = await supabase
+    .from('users')
+    .update({ 
+      is_banned: false, 
+      banned_reason: null, 
+      banned_at: null 
+    })
+    .eq('telegram_user_id', userId);
+
+  if (error) {
+    return ctx.reply('❌ Failed to unban user. Check user ID.');
+  }
+
+  ctx.reply(`✅ User ${userId} unbanned`);
+});
+
+// Broadcast State
+const broadcastState = new Map<number, boolean>();
+
+// Command: /broadcast
+bot.command('broadcast', async (ctx) => {
+  if (!isOwner(ctx)) return;
+  if (!ctx.from) return;
+
+  broadcastState.set(ctx.from.id, true);
+
+  await ctx.reply(
+`📢 *Broadcast Mode*
+
+Reply to this message with the text you want to send to ALL users.
+Type /cancel to abort.`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+// Command: /cancel
+bot.command('cancel', async (ctx) => {
+  if (!ctx.from) return;
+  
+  if (broadcastState.has(ctx.from.id)) {
+    broadcastState.delete(ctx.from.id);
+    await ctx.reply('❌ Broadcast cancelled');
+  }
+});
+
+// Group Protection
+bot.on('my_chat_member', async (ctx) => {
+  if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') return;
+
+  const status = ctx.myChatMember.new_chat_member.status;
+  
+  if (status === 'member' || status === 'administrator') {
+    await ctx.reply(
+`⚠️ *Group Protection Disabled*
+
+This group requires a premium plan.
+Contact admin or upgrade to enable protection.`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+});
+
 // Command: /help
 bot.command('help', async (ctx) => {
   if (!ctx.from) return;
@@ -384,41 +485,6 @@ bot.on('message:document', async (ctx) => {
 // Handle text messages (links and menu buttons)
 bot.on('message:text', async (ctx) => {
   const text = ctx.message.text;
-  const user = ctx.from;
-  
-  // Handle Broadcast Mode
-  if (user && isOwner(ctx) && broadcastState.get(user.id)) {
-    if (text === '/cancel') {
-      broadcastState.delete(user.id);
-      return ctx.reply('❌ Broadcast cancelled');
-    }
-
-    broadcastState.delete(user.id); // Reset state
-    await ctx.reply('⏳ Sending broadcast...');
-
-    const { data: users } = await supabase
-      .from('users')
-      .select('telegram_user_id')
-      .eq('is_banned', false);
-
-    let sent = 0;
-    let failed = 0;
-    
-    if (users) {
-      for (const u of users) {
-        try {
-          await ctx.api.sendMessage(u.telegram_user_id, text);
-          sent++;
-          // Add small delay to avoid hitting limits
-          await new Promise(resolve => setTimeout(resolve, 50));
-        } catch (e) {
-          failed++;
-        }
-      }
-    }
-
-    return ctx.reply(`✅ Broadcast complete\n\nSent: ${sent}\nFailed: ${failed}`);
-  }
   
   // Handle menu buttons
   if (text === '👤 My Account') {
@@ -468,7 +534,15 @@ Commands:
 
 ⚠️ Always verify important info yourself.`, { parse_mode: 'Markdown' });
     return;
+  }Group Check Gate
+  if (ctx.chat.type !== 'private') {
+    // Check if group has premium (placeholder logic)
+    // For now, just return to prevent processing in groups without premium
+    // You can add DB check here later
+    return;
   }
+
+  // 
 
   if (text === '🛠 Support') {
     await ctx.reply('For support, please contact @YourSupportHandle or create an issue on GitHub.');
