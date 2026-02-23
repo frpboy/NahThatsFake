@@ -31,9 +31,9 @@ export async function checkCredits(telegramUserId: string): Promise<UserCredits>
   };
 }
 
-const OWNER_ID = process.env.OWNER_TELEGRAM_ID;
-
 export async function consumeCredit(telegramUserId: string, type: 'daily' | 'permanent'): Promise<boolean> {
+  const OWNER_ID = process.env.OWNER_TELEGRAM_ID;
+
   // 🔥 OWNER = unlimited
   if (OWNER_ID && telegramUserId === OWNER_ID) {
     return true;

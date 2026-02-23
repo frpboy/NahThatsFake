@@ -27,7 +27,13 @@ export async function processLinkCheck(ctx: Context) {
     // Check credits
     const creditAvailable = await consumeCredit(telegramUserId, 'daily');
     if (!creditAvailable) {
-      await ctx.reply('❌ No credits remaining. Use /refer to earn more or upgrade to premium!');
+      await ctx.reply(
+`🚫 *No credits left*
+
+⭐ Upgrade to Premium for unlimited access
+🎁 Or use /refer to earn credits`,
+        { parse_mode: 'Markdown' }
+      );
       return;
     }
 
