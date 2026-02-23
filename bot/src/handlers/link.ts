@@ -2,6 +2,7 @@
 import { Context } from 'grammy';
 import { supabase } from '../supabase';
 import { consumeCredit } from '../utils/credits';
+import { checkUrlSafety } from '../services/urlscanner';
 import crypto from 'crypto';
 
 export async function processLinkCheck(ctx: Context) {
@@ -30,6 +31,8 @@ export async function processLinkCheck(ctx: Context) {
       return;
     }
 
+    await ctx.reply('🔍 Analyzing link safety...');
+
     // Normalize URL for hashing
     const normalizedUrl = normalizeUrl(url);
     const urlHash = crypto.createHash('sha256').update(normalizedUrl).digest('hex');
@@ -53,7 +56,14 @@ export async function processLinkCheck(ctx: Context) {
       };
     } else {
       // Call multiple APIs for link checking
-      result = await checkLinkSafety(url);
+      const apiResult = await checkUrlSafety(url);
+      
+      result = {
+        score: apiResult.score,
+        risk_level: apiResult.risk_level,
+        cached: false,
+        api_source: apiResult.sources.join(', ') || 'unknown'
+      };
       
       // Cache the result
       await supabase.from('check_cache').insert({
@@ -62,7 +72,7 @@ export async function processLinkCheck(ctx: Context) {
         score: result.score,
         risk_level: result.risk_level,
         api_source: result.api_source,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toString() // 7 days
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
       });
     }
 
@@ -96,7 +106,7 @@ Need a detailed report? Open the full app for more insights.`, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
-          { text: '📱 Open Full Report', web_app: { url: 'https://your-tma-url.com' } }
+          { text: '📱 Open Full Report', web_app: { url: process.env.TMA_URL || 'https://google.com' } }
         ]]
       }
     });
@@ -108,30 +118,20 @@ Need a detailed report? Open the full app for more insights.`, {
 }
 
 function normalizeUrl(url: string): string {
-  // Basic URL normalization
-  let normalized = url.toLowerCase().trim();
-  
-  // Remove common tracking parameters
-  const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'fbclid', 'gclid'];
-  const urlObj = new URL(normalized);
-  
-  trackingParams.forEach(param => {
-    urlObj.searchParams.delete(param);
-  });
-  
-  return urlObj.toString();
-}
-
-async function checkLinkSafety(url: string): Promise<any> {
-  // Placeholder for link checking APIs
-  // In production, implement calls to:
-  // 1. Google Safe Browsing API
-  // 2. VirusTotal API
-  
-  return {
-    score: Math.random(), // Random for demo
-    risk_level: Math.random() > 0.8 ? 'HIGH' : Math.random() > 0.5 ? 'MEDIUM' : 'LOW',
-    api_source: 'combined',
-    cached: false
-  };
+  try {
+    // Basic URL normalization
+    let normalized = url.toLowerCase().trim();
+    
+    // Remove common tracking parameters
+    const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'fbclid', 'gclid'];
+    const urlObj = new URL(normalized);
+    
+    trackingParams.forEach(param => {
+      urlObj.searchParams.delete(param);
+    });
+    
+    return urlObj.toString();
+  } catch (e) {
+    return url.toLowerCase().trim();
+  }
 }

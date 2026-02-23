@@ -208,13 +208,13 @@ bot.on('message:photo', async (ctx) => {
     .single();
 
   if (!userData?.consent_given) {
-    await ctx.reply('⚠️ *Consent Required*
+    await ctx.reply(`⚠️ *Consent Required*
 
 I need your consent to process images. This helps us comply with privacy regulations.
 
 By continuing, you agree to our terms of service and privacy policy.
 
-✅ Tap "I Agree" to continue:', {
+✅ Tap "I Agree" to continue:`, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[

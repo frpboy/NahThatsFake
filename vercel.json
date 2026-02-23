@@ -1,31 +1,26 @@
 
 {
   "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "bot/package.json",
-      "use": "@vercel/node",
-      "config": {
-        "distDir": "bot/dist"
-      }
+      "source": "/api/(.*)",
+      "destination": "/tma/server.js"
     },
     {
-      "src": "tma/server.js",
-      "use": "@vercel/node"
+      "source": "/bot/(.*)",
+      "destination": "/bot/dist/index.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/tma/$1"
     }
   ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "tma/server.js"
+  "functions": {
+    "bot/package.json": {
+      "runtime": "nodejs18.x"
     },
-    {
-      "src": "/bot/(.*)",
-      "dest": "bot/dist/index.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "tma/$1"
+    "tma/server.js": {
+      "runtime": "nodejs18.x"
     }
-  ]
+  }
 }

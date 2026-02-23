@@ -74,17 +74,19 @@ export async function detectDeepfake(imageBuffer: Buffer): Promise<{
 
   } catch (error) {
     if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      
       console.error('Sightengine API error:', {
-        status: error.response?.status,
+        status: status,
         data: error.response?.data,
         message: error.message
       });
       
-      if (error.response?.status === 429) {
+      if (status === 429) {
         throw new Error('Rate limit exceeded. Please try again later.');
-      } else if (error.response?.status === 401) {
+      } else if (status === 401) {
         throw new Error('Invalid API credentials');
-      } else if (error.response?.status >= 500) {
+      } else if (status && status >= 500) {
         throw new Error('Service temporarily unavailable');
       }
     }
