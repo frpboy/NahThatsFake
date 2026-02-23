@@ -788,7 +788,7 @@ Commands:
   }
 
   if (text.includes('Support')) {
-    await ctx.reply('For support, please contact @sujathack74 mentioning the issue you are facing or create an issue on GitHub.');
+    await ctx.reply('Need help? \n\nUse the "📝 Feedback" button to report bugs or send suggestions directly to the team.\n\nAlternatively, use the /feedback command.');
     return;
   }
   
