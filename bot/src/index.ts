@@ -18,6 +18,15 @@ validateConfig();
 
 export const bot = new Bot(config.BOT_TOKEN);
 
+// Debug Middleware - Log all updates
+bot.use(async (ctx, next) => {
+  if (ctx.message?.text) {
+    console.log(`[DEBUG] Text received from ${ctx.from?.id}: "${ctx.message.text}"`);
+    console.log(`[DEBUG] Is command? ${ctx.message.text.startsWith('/')}`);
+  }
+  await next();
+});
+
 // Start Scheduler
 startScheduler();
 
@@ -676,7 +685,8 @@ bot.on('message:text', async (ctx) => {
   const text = ctx.message.text;
   
   // Handle menu buttons
-  if (text === '👤 My Account') {
+  // Match simplified text or exact button text
+  if (text.includes('My Account')) {
     // Trigger /credits logic
     const user = ctx.from;
     if (user) {
@@ -692,7 +702,7 @@ Use /refer to earn more credits!`, { parse_mode: 'Markdown' });
     return;
   }
   
-  if (text === '⭐ Premium') {
+  if (text.includes('Premium')) {
     // Trigger /premium logic
     await ctx.reply(`⭐ *Go Premium*
 
@@ -713,7 +723,7 @@ Pay with UPI, cards, or Telegram Stars!`, {
     return;
   }
   
-  if (text === '🤖 Bot Info') {
+  if (text.includes('Bot Info')) {
     // Trigger /help logic
     await ctx.reply(`🧠 *Nah That’s Fake – Help*
 
@@ -730,12 +740,12 @@ Commands:
     return;
   }
 
-  if (text === '🛠 Support') {
+  if (text.includes('Support')) {
     await ctx.reply('For support, please contact @YourSupportHandle or create an issue on GitHub.');
     return;
   }
   
-  if (text === '📱 Open App') {
+  if (text.includes('Open App')) {
     return ctx.reply('Open app 👇', {
       reply_markup: {
         inline_keyboard: [[
@@ -759,7 +769,8 @@ Commands:
     await processLinkCheck(ctx);
   } else {
     // Only show default reply if it's not a command (commands are handled above)
-    if (!text.startsWith('/')) {
+    // Use trim() to handle leading spaces
+    if (!text.trim().startsWith('/')) {
       await ctx.reply('Send me an image or a link to check, or use /help for commands.');
     }
   }
