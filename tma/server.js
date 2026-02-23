@@ -361,6 +361,94 @@ app.post('/api/payment/create-stars-invoice', async (req, res) => {
   }
 });
 
+// 4. Razorpay Webhook (Server-to-Server)
+app.post('/api/payment/razorpay-webhook', async (req, res) => {
+  const secret = process.env.RAZORPAY_KEY_SECRET;
+  
+  // Validate signature
+  const signature = req.headers['x-razorpay-signature'];
+  if (!signature) return res.status(400).send('Missing signature');
+  
+  const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || secret);
+  shasum.update(JSON.stringify(req.body));
+  const digest = shasum.digest('hex');
+
+  if (digest === signature) {
+    // Verified
+    const event = req.body.event;
+    const payload = req.body.payload;
+
+    console.log(`Received Razorpay webhook: ${event}`);
+
+    try {
+      if (event === 'order.paid' || event === 'payment.captured') {
+        const payment = payload.payment.entity;
+        const order = payload.order.entity;
+        
+        // Extract metadata from notes
+        const { telegramUserId, planId } = payment.notes || order.notes || {};
+        
+        if (telegramUserId && planId) {
+          // Process fulfillment (duplicate logic from verify endpoint)
+          const { data: user } = await supabase
+            .from('users')
+            .select('id, permanent_credits, last_payment_id')
+            .eq('telegram_user_id', telegramUserId.toString())
+            .single();
+
+          if (user) {
+            // Idempotency check
+            if (user.last_payment_id === payment.id) {
+               console.log('Payment already processed:', payment.id);
+               return res.json({ status: 'ok' });
+            }
+
+            const planDetails = getPlanDetails(planId);
+            if (planDetails) {
+              // Insert Payment Record
+              await supabase.from('payments').insert({
+                user_id: user.id,
+                plan_id: planId,
+                amount_inr: payment.amount,
+                payment_method: 'razorpay_webhook',
+                payment_id: payment.id,
+                order_id: order.id,
+                status: 'success',
+                premium_from: new Date().toISOString(),
+                premium_until: planDetails.is_credit ? null : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
+              });
+
+              // Update User
+              if (planDetails.is_credit) {
+                await supabase.from('users').update({
+                  permanent_credits: (user.permanent_credits || 0) + planDetails.credits,
+                  last_payment_id: payment.id,
+                  last_paid_at: new Date().toISOString()
+                }).eq('id', user.id);
+              } else {
+                await supabase.from('users').update({
+                  plan: planId,
+                  premium_until: new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString(),
+                  last_payment_id: payment.id,
+                  last_paid_at: new Date().toISOString()
+                }).eq('id', user.id);
+              }
+              console.log(`Webhook: Fulfilled ${planId} for user ${telegramUserId}`);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Webhook processing error:', err);
+      // Return 200 anyway to prevent Razorpay from retrying indefinitely on logic errors
+    }
+    
+    res.json({ status: 'ok' });
+  } else {
+    res.status(400).send('Invalid signature');
+  }
+});
+
 // Start server
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {
