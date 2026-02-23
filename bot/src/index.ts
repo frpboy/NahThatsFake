@@ -173,8 +173,8 @@ Ready to catch some fakes? Send me something to check!`, {
       reply_markup: {
         keyboard: [
           [{ text: '👤 My Account' }, { text: '⭐ Premium' }],
-          [{ text: '🤖 Bot Info' }, { text: '🛠 Support' }],
-          [{ text: '📱 Open App' }]
+          [{ text: '🤖 Bot Info' }, { text: '📝 Feedback' }],
+          [{ text: '🛠 Support' }, { text: '📱 Open App' }]
         ],
         resize_keyboard: true
       }
@@ -186,8 +186,8 @@ Ready to catch some fakes? Send me something to check!`, {
       reply_markup: {
         keyboard: [
           [{ text: '👤 My Account' }, { text: '⭐ Premium' }],
-          [{ text: '🤖 Bot Info' }, { text: '🛠 Support' }],
-          [{ text: '📱 Open App' }]
+          [{ text: '🤖 Bot Info' }, { text: '📝 Feedback' }],
+          [{ text: '🛠 Support' }, { text: '📱 Open App' }]
         ],
         resize_keyboard: true
       }
@@ -533,6 +533,35 @@ bot.command('setplan', async (ctx) => {
 // Broadcast State
 const broadcastState = new Map<number, boolean>();
 
+// Feedback State
+interface FeedbackState {
+  step: 'waiting_message';
+  type: string;
+}
+const feedbackState = new Map<number, FeedbackState>();
+
+// Reply State (Owner)
+interface ReplyState {
+  step: 'waiting_reply';
+  feedbackId: string;
+  targetUserId: string;
+}
+const replyState = new Map<number, ReplyState>();
+
+// Command: /feedback
+bot.command('feedback', async (ctx) => {
+  await ctx.reply('What kind of feedback do you have?', {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '💡 Suggestion', callback_data: 'feedback_suggestion' }],
+        [{ text: '🐛 Bug Report', callback_data: 'feedback_bug' }],
+        [{ text: '😠 Complaint', callback_data: 'feedback_complaint' }],
+        [{ text: '💬 Other', callback_data: 'feedback_other' }]
+      ]
+    }
+  });
+});
+
 // Command: /broadcast
 bot.command('broadcast', async (ctx) => {
   if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
@@ -737,8 +766,24 @@ Commands:
 /history – Last checks
 /refer – Earn free credits
 /premium – Upgrade plan
+/feedback – Submit suggestion/bug
 
 ⚠️ Always verify important info yourself.`, { parse_mode: 'Markdown' });
+    return;
+  }
+
+  if (text.includes('Feedback')) {
+    // Trigger /feedback logic
+    await ctx.reply('What kind of feedback do you have?', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💡 Suggestion', callback_data: 'feedback_suggestion' }],
+          [{ text: '🐛 Bug Report', callback_data: 'feedback_bug' }],
+          [{ text: '😠 Complaint', callback_data: 'feedback_complaint' }],
+          [{ text: '💬 Other', callback_data: 'feedback_other' }]
+        ]
+      }
+    });
     return;
   }
 
@@ -781,6 +826,37 @@ Commands:
 // Handle callback queries
 bot.on('callback_query', async (ctx) => {
   const data = ctx.callbackQuery.data;
+  const userId = ctx.from?.id;
+  
+  // Feedback Selection
+  if (data?.startsWith('feedback_') && userId) {
+    const type = data.split('_')[1];
+    feedbackState.set(userId, { step: 'waiting_message', type });
+    await ctx.answerCallbackQuery();
+    await ctx.reply(`Please describe your ${type}. Send it as a text message.`);
+    return;
+  }
+
+  // Owner Reply
+  if (data?.startsWith('reply_feedback_') && userId) {
+    const parts = data.split('_');
+    const feedbackId = parts[2];
+    const targetUserId = parts[3];
+    
+    replyState.set(userId, { step: 'waiting_reply', feedbackId, targetUserId });
+    await ctx.answerCallbackQuery();
+    await ctx.reply(`Enter your reply for feedback...`);
+    return;
+  }
+
+  // Owner Ignore
+  if (data?.startsWith('ignore_feedback_')) {
+    const feedbackId = data.split('_')[2];
+    await supabase.from('feedback').update({ status: 'ignored' }).eq('id', feedbackId);
+    await ctx.answerCallbackQuery('Marked as ignored');
+    await ctx.editMessageText(ctx.callbackQuery.message?.text + '\n\n[IGNORED]');
+    return;
+  }
   
   if (data === 'consent_agree') {
     const user = ctx.from;
@@ -812,6 +888,7 @@ bot.start({
       { command: 'history', description: 'Recent checks' },
       { command: 'refer', description: 'Invite friends and earn credits' },
       { command: 'premium', description: 'Upgrade to premium' },
+      { command: 'feedback', description: 'Submit suggestion/bug' },
     ]);
   }
 });
