@@ -133,10 +133,12 @@
                 
                 if (isNowPro) {
                     showSuccess();
+                    // Optional: Call your backend to force sync (if implemented)
+                    // fetch('/api/sync-premium', { method: 'POST', body: JSON.stringify({ userId }) });
                 } else {
-                    alert("Purchase successful, but Pro status not detected yet.");
+                    alert("Purchase successful. Premium features will activate shortly.");
                     btn.disabled = false;
-                    btn.innerText = "Try Again";
+                    btn.innerText = "Check Status";
                 }
             } catch (e) {
                 if (!e.userCancelled) alert("Purchase failed. Please try again.");
@@ -164,6 +166,8 @@
             document.getElementById('loading').classList.add('hidden');
             document.getElementById('restore-btn').classList.add('hidden');
             document.getElementById('success-message').classList.remove('hidden');
+            // Hardening: Don't imply instant unlock if webhook is delayed
+            document.querySelector('#success-message p').innerText = "Payment successful. Premium will activate shortly.";
         }
 
         init();

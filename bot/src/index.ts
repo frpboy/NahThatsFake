@@ -229,10 +229,13 @@ Unlock unlimited checks and advanced features:
 💎 Individual Annual: ₹799 (33% off)
 💎 Group Monthly: ₹299
 
-Pay with UPI, cards, or Telegram Stars!
-
-[Upgrade Now]`, {
-    parse_mode: 'Markdown'
+Pay with UPI, cards, or Telegram Stars!`, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [[
+        { text: 'Upgrade Now', web_app: { url: `${process.env.TMA_URL}/premium.html` } }
+      ]]
+    }
   });
 });
 
@@ -513,9 +516,14 @@ Unlock unlimited checks and advanced features:
 💎 Individual Annual: ₹799 (33% off)
 💎 Group Monthly: ₹299
 
-Pay with UPI, cards, or Telegram Stars!
-
-[Upgrade Now]`, { parse_mode: 'Markdown' });
+Pay with UPI, cards, or Telegram Stars!`, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: 'Upgrade Now', web_app: { url: `${process.env.TMA_URL}/premium.html` } }
+        ]]
+      }
+    });
     return;
   }
   
