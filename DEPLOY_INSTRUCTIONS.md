@@ -44,21 +44,12 @@ This will run both the Bot and the TMA (Mini App) on the same server.
 1.  **Upload** the entire project folder to your server.
 2.  **Run:**
     ```bash
-    docker-compose up -d --build
+    docker compose up -d --build
     ```
 3.  **Logs:**
     ```bash
     docker-compose logs -f
     ```
-
-### Option B: Cloud Platforms (Vercel + Railway/Heroku)
-*   **TMA (Frontend/API):** Deploy the `tma` folder to **Vercel**.
-    *   Set the Root Directory to `tma`.
-    *   Add environment variables in Vercel settings.
-*   **Bot (Backend):** Deploy the `bot` folder to **Railway**, **Heroku**, or **Render**.
-    *   Set the Root Directory to `bot`.
-    *   Add environment variables.
-    *   Command: `npm start`.
 
 ## 4. Post-Deployment Verification
 1.  **Check Health:** Send `/health` to the bot (Admin only).

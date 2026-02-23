@@ -113,7 +113,7 @@ ${result.cached ? '⚡ Cached result' : '🔄 Fresh analysis'}
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: '📢 Share Result & Earn Credits', url: `https://t.me/share/url?url=${encodeURIComponent(shareLink)}&text=${encodeURIComponent(shareText)}` }]
+          [{ text: '📢 Share Result & Earn Credits', url: `https://t.me/share/url?url=${shareLink}&text=${encodeURIComponent(shareText)}` }]
         ]
       }
     });
