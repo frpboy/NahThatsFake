@@ -373,6 +373,9 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
   shasum.update(JSON.stringify(req.body));
   const digest = shasum.digest('hex');
 
+  // If testing, log both for debugging (remove in production)
+  // console.log('Webhook Debug:', { digest, signature, secret: !!secret });
+
   if (digest === signature) {
     // Verified
     const event = req.body.event;
