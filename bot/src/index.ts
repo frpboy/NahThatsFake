@@ -1,4 +1,4 @@
-import { Bot } from 'grammy';
+import { Bot, Context } from 'grammy';
 import { supabase } from './supabase';
 import { generateReferralCode } from './utils/referral';
 import { checkCredits } from './utils/credits';
@@ -11,12 +11,56 @@ import { consentMiddleware } from './middleware/consent';
 import { isOwner, isAdmin, getRole } from './utils/roles';
 import { logAdminAction } from './utils/adminLogger';
 import { startScheduler } from './services/scheduler';
+import { fetchAdsGramAd } from './services/adsgram';
 import { config, validateConfig } from './config';
 
 // Validate environment variables
 validateConfig();
 
 export const bot = new Bot(config.BOT_TOKEN);
+
+async function sendSponsoredAd(ctx: Context) {
+  if (!ctx.from) return;
+  if (!config.ADSGRAM_TOKEN || !config.ADSGRAM_BLOCK_ID) {
+    await ctx.reply('Sponsored messages are not available right now.');
+    return;
+  }
+
+  const ad = await fetchAdsGramAd({
+    tgid: ctx.from.id.toString(),
+    blockid: config.ADSGRAM_BLOCK_ID,
+    language: config.ADSGRAM_LANGUAGE || ctx.from.language_code || 'en',
+    token: config.ADSGRAM_TOKEN
+  });
+
+  if (!ad) {
+    await ctx.reply('No sponsored message available right now.');
+    return;
+  }
+
+  const inline_keyboard: Array<Array<{ text: string; url: string }>> = [
+    [{ text: ad.button_name, url: ad.click_url }]
+  ];
+  if (ad.button_reward_name && ad.reward_url) {
+    inline_keyboard.push([{ text: ad.button_reward_name, url: ad.reward_url }]);
+  }
+
+  if (ad.image_url) {
+    await ctx.replyWithPhoto(ad.image_url, {
+      caption: ad.text_html,
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard },
+      protect_content: true
+    });
+    return;
+  }
+
+  await ctx.reply(ad.text_html, {
+    parse_mode: 'HTML',
+    reply_markup: { inline_keyboard },
+    protect_content: true
+  });
+}
 
 // Debug Middleware - Log all updates
 bot.use(async (ctx, next) => {
@@ -90,20 +134,31 @@ bot.command('start', async (ctx) => {
   const user = ctx.from;
   if (!user) return;
 
-  // Check for referral code in start payload
-  const startPayload = ctx.match;
-  let referredBy = null;
-  
-  if (startPayload) {
-    // Validate referral code
-    const { data: referrer } = await supabase
+  const startPayloadRaw = typeof ctx.match === 'string' ? ctx.match.trim() : '';
+  let referredBy: string | null = null;
+  let referrerUser: { id: string; telegram_user_id: string; referral_code: string | null } | null = null;
+
+  if (startPayloadRaw) {
+    const { data: refByCode } = await supabase
       .from('users')
-      .select('id')
-      .eq('referral_code', startPayload)
-      .single();
-    
-    if (referrer) {
-      referredBy = startPayload;
+      .select('id, telegram_user_id, referral_code')
+      .eq('referral_code', startPayloadRaw)
+      .maybeSingle();
+
+    if (refByCode) {
+      referrerUser = refByCode;
+      referredBy = refByCode.referral_code;
+    } else if (/^\d{5,}$/.test(startPayloadRaw)) {
+      const { data: refByTelegramId } = await supabase
+        .from('users')
+        .select('id, telegram_user_id, referral_code')
+        .eq('telegram_user_id', startPayloadRaw)
+        .maybeSingle();
+
+      if (refByTelegramId) {
+        referrerUser = refByTelegramId;
+        referredBy = refByTelegramId.referral_code;
+      }
     }
   }
 
@@ -129,46 +184,42 @@ bot.command('start', async (ctx) => {
       updated_at: new Date().toISOString()
     }).select().single();
 
-    // Process Referral Reward
-    if (referredBy && newUser) {
-      // Find referrer by code
-      const { data: referrer } = await supabase
-        .from('users')
-        .select('id, telegram_user_id')
-        .eq('referral_code', referredBy)
-        .single();
-      
-      if (referrer) {
-        // Award credits via RPC
-        await supabase.rpc('process_referral_reward', {
-          referrer_id: referrer.id,
-          referee_id: newUser.id
-        });
-        
-        // Notify referrer
-        try {
-          await ctx.api.sendMessage(referrer.telegram_user_id, `🎉 *New Referral!*
-          
-Someone just joined using your link.
-You earned *2 credits*!
+    if (referredBy && newUser && referrerUser && referrerUser.telegram_user_id !== user.id.toString()) {
+      await supabase.rpc('process_referral_reward', {
+        referrer_id: referrerUser.id,
+        referee_id: newUser.id
+      });
 
-Total referrals: Check /refer`);
-        } catch (e) {
-          // Ignore if referrer blocked bot
-        }
+      try {
+        await ctx.api.sendMessage(
+          referrerUser.telegram_user_id,
+          `🎉 *New Referral Joined!*
+
+Someone signed up using your link.
+💎 You earned +2 credits.
+
+Keep sharing to earn more:
+👉 /refer`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch {
+        // ignore
       }
     }
 
     // Send welcome message
-    await ctx.reply(`🤖 *Nah That's Fake* - Your BS Detector
+    await ctx.reply(`🧠 *Nah That’s Fake — Your BS Detector*
 
-Welcome! I'm here to help you spot fake images and scam links.
+Welcome! I help you spot:
+📸 AI-generated / deepfake images
+🔗 Scam, phishing & malware links
 
-📸 Send me an image to check if it's AI-generated
-🔗 Send me a link to verify if it's safe
-💰 Start with 3 free checks daily + bonus credits
+🎁 You start with:
+• 3 free checks every day
+• Bonus credits for referrals
 
-Ready to catch some fakes? Send me something to check!`, {
+Just send an image or a link to begin.
+Let’s catch some fakes 👀`, {
       parse_mode: 'Markdown',
       reply_markup: {
         keyboard: [
@@ -180,8 +231,27 @@ Ready to catch some fakes? Send me something to check!`, {
       }
     });
   } else {
-    // Existing user
-    await ctx.reply('Welcome back! Send me an image or link to check.', {
+    if (startPayloadRaw && referrerUser) {
+      await ctx.reply(`ℹ️ You’re already registered.
+
+Referral bonuses apply only to new users.
+Send an image or link to continue.`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          keyboard: [
+            [{ text: '👤 My Account' }, { text: '⭐ Premium' }],
+            [{ text: '🤖 Bot Info' }, { text: '📝 Feedback' }],
+            [{ text: '🛠 Support' }, { text: '📱 Open App' }]
+          ],
+          resize_keyboard: true
+        }
+      });
+      return;
+    }
+
+    await ctx.reply(`👋 Welcome back!
+
+Send an image or a link whenever you’re ready.`, {
       parse_mode: 'Markdown',
       reply_markup: {
         keyboard: [
@@ -213,9 +283,13 @@ Daily remaining: ${credits.dailyRemaining}/3
 Permanent credits: ${credits.permanentCredits}
 Premium: ${credits.isPremium ? '✅ Active' : '❌ Free tier'}
 
-Use /refer to earn more credits!`, {
+Use /refer to earn more credits.`, {
     parse_mode: 'Markdown'
   });
+});
+
+bot.command('earn', async (ctx) => {
+  await sendSponsoredAd(ctx);
 });
 
 // Command: /refer
@@ -647,6 +721,7 @@ Commands:
 /start – Get started 
 /check – What can I check? 
 /credits – View credits 
+/earn – Sponsored message 
 /refer – Earn free credits 
 /history – Recent checks 
 /premium – Upgrade plan 
@@ -764,6 +839,7 @@ Pay with UPI, cards, or Telegram Stars!`, {
 Commands:
 /credits – View credits
 /history – Last checks
+/earn – Sponsored message
 /refer – Earn free credits
 /premium – Upgrade plan
 /feedback – Submit suggestion/bug

@@ -210,6 +210,7 @@ async function loadUserData() {
             plan: 'unknown',
             created_at: new Date().toISOString(),
             daily_credits: '-',
+            permanent_credits: '-',
             total_checks: '-'
         });
     }
@@ -391,4 +392,4 @@ function closeApp() {
 }
 
 // Initialize when DOM is ready
-document.addEvent
+document.addEventListener('DOMContentLoaded', initApp);

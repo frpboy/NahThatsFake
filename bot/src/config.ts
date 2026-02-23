@@ -19,7 +19,10 @@ export const config = {
   SIGHTENGINE_API_SECRET: process.env.SIGHTENGINE_API_SECRET,
   GOOGLE_SAFE_BROWSING_KEY: process.env.GOOGLE_SAFE_BROWSING_KEY,
   VIRUSTOTAL_API_KEY: process.env.VIRUSTOTAL_API_KEY,
-  TMA_URL: process.env.TMA_URL || 'https://nahthatsfake.vercel.app'
+  TMA_URL: process.env.TMA_URL || 'https://nahthatsfake.vercel.app',
+  ADSGRAM_TOKEN: process.env.ADSGRAM_TOKEN,
+  ADSGRAM_BLOCK_ID: process.env.ADSGRAM_BLOCK_ID,
+  ADSGRAM_LANGUAGE: process.env.ADSGRAM_LANGUAGE
 };
 
 export function validateConfig() {
