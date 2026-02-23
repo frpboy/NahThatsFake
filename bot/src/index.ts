@@ -315,7 +315,8 @@ bot.command('premium', async (ctx) => {
 
 Unlock unlimited checks and advanced features:
 
-💎 Individual Monthly: ₹99
+💎 Individual Weekly: ₹29 / 150 ⭐
+💎 Individual Monthly: ₹99 / 500 ⭐
 💎 Individual Annual: ₹799 (33% off)
 💎 Group Monthly: ₹299
 
@@ -708,7 +709,8 @@ Use /refer to earn more credits!`, { parse_mode: 'Markdown' });
 
 Unlock unlimited checks and advanced features:
 
-💎 Individual Monthly: ₹99
+💎 Individual Weekly: ₹29 / 150 ⭐
+💎 Individual Monthly: ₹99 / 500 ⭐
 💎 Individual Annual: ₹799 (33% off)
 💎 Group Monthly: ₹299
 
