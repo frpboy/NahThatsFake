@@ -99,7 +99,7 @@ async function checkGoogleSafeBrowsing(url: string): Promise<{
   threats: string[];
   safe: boolean;
 }> {
-  const apiKey = process.env.GOOGLE_SAFE_BROWSING_API_KEY;
+  const apiKey = process.env.GOOGLE_SAFE_BROWSING_KEY;
   
   if (!apiKey) {
     console.warn('Google Safe Browsing API key not configured');
