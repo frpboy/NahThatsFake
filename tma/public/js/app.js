@@ -48,6 +48,10 @@ function initApp() {
         
         // Check for stored session or handle web login flow
         // For now, just show the widget
+        
+        // Show "Open in Telegram" button when outside Telegram
+        const openTgBtn = document.getElementById('open-in-telegram-btn');
+        if (openTgBtn) openTgBtn.classList.remove('hidden');
     }
 
     // Apply theme initially and listen for changes
