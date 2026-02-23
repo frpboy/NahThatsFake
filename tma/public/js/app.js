@@ -193,6 +193,7 @@ async function loadUserData() {
                  plan: 'free',
                  created_at: new Date().toISOString(),
                  daily_credits: 3,
+                 permanent_credits: 0,
                  total_checks: 0
              });
              return;
@@ -225,6 +226,7 @@ function updateUI(profile) {
         safeText('user-plan', formatPlanName(profile.plan));
         safeText('user-created', new Date(profile.created_at).toLocaleDateString());
         safeText('credits-remaining', profile.daily_credits);
+        safeText('bonus-credits', profile.permanent_credits || 0);
         safeText('total-checks', profile.total_checks || 0);
     }
     
@@ -389,4 +391,4 @@ function closeApp() {
 }
 
 // Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', initApp);
+document.addEvent
