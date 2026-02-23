@@ -1,0 +1,33 @@
+{
+  "name": "nahthatsfake-bot",
+  "version": "1.0.0",
+  "description": "Nah That's Fake - Telegram Bot for Deepfake & Scam Detection",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "deepfake",
+    "scam",
+    "detection"
+  ],
+  "author": "Nah That's Fake Team",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
+    "axios": "^1.13.5",
+    "dotenv": "^17.3.1",
+    "grammy": "^1.40.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,64 @@
+
+version: '3.8'
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - BOT_TOKEN=${BOT_TOKEN}
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+    depends_on:
+      - redis
+    networks:
+      - nahthatsfake
+
+  tma:
+    build:
+      context: .
+      dockerfile: tma/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - PORT=3000
+    ports:
+      - "3002:3000"
+    restart: unless-stopped
+    networks:
+      - nahthatsfake
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - nahthatsfake
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - bot
+      - tma
+    restart: unless-stopped
+    networks:
+      - nahthatsfake
+
+networks:
+  nahthatsfake:
+    driver: bridge
