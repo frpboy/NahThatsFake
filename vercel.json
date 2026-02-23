@@ -1,0 +1,23 @@
+
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/tma/server.js"
+    },
+    {
+      "source": "/bot/(.*)",
+      "destination": "/bot/dist/index.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/tma/$1"
+    }
+  ],
+  "functions": {
+    "tma/server.js": {
+      "runtime": "nodejs18.x"
+    }
+  }
+}

@@ -173,7 +173,8 @@ bot.command('history', async (ctx) => {
     historyText += `${index + 1}. ${type} ${date} - ${risk} (${score}%)\n`;
   });
 
-  historyText += '\n📱 View full history in the app: [Open TMA]';
+  const tmaUrl = process.env.TMA_URL || 'https://google.com';
+historyText += `\n📱 View full history in the app: ${tmaUrl}`;
 
   await ctx.reply(historyText, { parse_mode: 'Markdown' });
 });
