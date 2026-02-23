@@ -1,28 +1,21 @@
-
 FROM node:18-alpine
 
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY tma/package*.json ./
 
-# Install dependencies
+# Install deps
 RUN npm ci --only=production
 
-# Copy source code
-COPY server.js ./
-COPY index.html ./
-COPY public ./public
+# Copy app files
+COPY tma/server.js ./
+COPY tma/index.html ./
+COPY tma/public ./public
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S tma -u 1001
-RUN chown -R tma:nodejs /app
-
+# Security user
+RUN addgroup -S nodejs && adduser -S tma -G nodejs
 USER tma
 
-# Expose port
 EXPOSE 3000
-
-# Start the application
 CMD ["npm", "start"]

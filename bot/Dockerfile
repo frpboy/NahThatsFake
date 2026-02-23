@@ -1,30 +1,25 @@
-
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY tsconfig.json ./
+# Copy package & config
+COPY bot/package*.json ./
+COPY bot/tsconfig.json ./
 
-# Install dependencies
+# Install deps
 RUN npm ci
 
-# Copy source code
-COPY src ./src
+# Copy source
+COPY bot/src ./src
 
-# Build the application
+# Build
 RUN npm run build
 
-# Prune dev dependencies to save space
+# Prune dev deps
 RUN npm prune --production
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S bot -u 1001
-RUN chown -R bot:nodejs /app
-
+# Security user
+RUN addgroup -S nodejs && adduser -S bot -G nodejs
 USER bot
 
-# Start the application
 CMD ["npm", "start"]
