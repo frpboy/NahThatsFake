@@ -10,7 +10,6 @@ RUN npm ci --only=production
 
 # Copy app files
 COPY tma/server.js ./
-COPY tma/index.html ./
 COPY tma/public ./public
 
 # Security user
