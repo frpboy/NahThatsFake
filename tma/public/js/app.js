@@ -11,7 +11,7 @@ function initApp() {
     tg.ready();
     
     // Request full screen if supported (Bot API 8.0+)
-    if (tg.requestFullscreen) {
+    if (tg.requestFullscreen && parseFloat(tg.version) >= 6.1) {
         tg.requestFullscreen();
     } else {
         tg.expand();
