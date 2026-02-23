@@ -67,7 +67,8 @@ dist
 
 # Gatsby files
 .cache/
-public
+# public is used by Gatsby but also our TMA frontend, so we must unignore it
+!tma/public/
 
 # Storybook build outputs
 .out
