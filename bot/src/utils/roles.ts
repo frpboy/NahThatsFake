@@ -4,7 +4,7 @@ import { config } from '../config';
 // Checks if user is the Root Owner (env) or has owner/admin role in DB
 export async function getRole(telegramId: string): Promise<'owner' | 'admin' | 'user'> {
   // Root owner override
-  if (telegramId === config.OWNER_TELEGRAM_ID) {
+  if (config.OWNER_TELEGRAM_ID && telegramId === config.OWNER_TELEGRAM_ID) {
     return 'owner';
   }
 

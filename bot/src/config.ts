@@ -13,7 +13,7 @@ export const config = {
   BOT_TOKEN: process.env.BOT_TOKEN!,
   SUPABASE_URL: process.env.SUPABASE_URL!,
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  OWNER_TELEGRAM_ID: process.env.OWNER_TELEGRAM_ID!,
+  OWNER_TELEGRAM_ID: process.env.OWNER_TELEGRAM_ID || '', // Optional to prevent crash
   // Optional but recommended
   SIGHTENGINE_API_KEY: process.env.SIGHTENGINE_API_KEY,
   SIGHTENGINE_API_SECRET: process.env.SIGHTENGINE_API_SECRET,
@@ -23,8 +23,17 @@ export const config = {
 };
 
 export function validateConfig() {
-  const missing = requiredEnvVars.filter(key => !process.env[key]);
+  const missing = requiredEnvVars.filter(key => {
+    // Optional vars that might be in the list but are now handled gracefully
+    if (key === 'OWNER_TELEGRAM_ID') return false;
+    return !process.env[key];
+  });
+  
   if (missing.length > 0) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+
+  if (!process.env.OWNER_TELEGRAM_ID) {
+    console.warn('⚠️ OWNER_TELEGRAM_ID is not set. Admin commands will be disabled.');
   }
 }
