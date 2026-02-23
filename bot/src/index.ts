@@ -534,15 +534,7 @@ Commands:
 
 ⚠️ Always verify important info yourself.`, { parse_mode: 'Markdown' });
     return;
-  }Group Check Gate
-  if (ctx.chat.type !== 'private') {
-    // Check if group has premium (placeholder logic)
-    // For now, just return to prevent processing in groups without premium
-    // You can add DB check here later
-    return;
   }
-
-  // 
 
   if (text === '🛠 Support') {
     await ctx.reply('For support, please contact @YourSupportHandle or create an issue on GitHub.');
@@ -557,6 +549,14 @@ Commands:
         ]]
       }
     });
+  }
+
+  // Group Check Gate
+  if (ctx.chat.type !== 'private') {
+    // Check if group has premium (placeholder logic)
+    // For now, just return to prevent processing in groups without premium
+    // You can add DB check here later
+    return;
   }
 
   // Check if it's a URL
