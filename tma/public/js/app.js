@@ -80,6 +80,11 @@ async function checkAdmin() {
         
         if (data.role === 'owner' || data.role === 'admin') {
             document.getElementById('admin-dashboard').classList.remove('hidden');
+            // If owner, show infinity symbol for credits
+            if (data.role === 'owner') {
+                const creditsEl = document.getElementById('credits-remaining');
+                if (creditsEl) creditsEl.textContent = '∞';
+            }
             loadAdminStats();
         }
     } catch (e) {
