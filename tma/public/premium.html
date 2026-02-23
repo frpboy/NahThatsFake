@@ -1,0 +1,172 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nah That's Fake - Premium</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --tg-theme-bg-color: var(--tg-theme-bg-color, #ffffff);
+            --tg-theme-text-color: var(--tg-theme-text-color, #000000);
+            --tg-theme-button-color: var(--tg-theme-button-color, #2481cc);
+            --tg-theme-button-text-color: var(--tg-theme-button-text-color, #ffffff);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--tg-theme-bg-color);
+            color: var(--tg-theme-text-color);
+            padding: 20px;
+            text-align: center;
+        }
+        .container { max-width: 400px; margin: 0 auto; }
+        h1 { margin-bottom: 10px; }
+        p { opacity: 0.8; margin-bottom: 20px; }
+        .product-list { display: flex; flex-direction: column; gap: 10px; }
+        .product-btn {
+            background: var(--tg-theme-button-color);
+            color: var(--tg-theme-button-text-color);
+            border: none;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .product-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .restore-btn {
+            margin-top: 20px;
+            background: transparent;
+            color: var(--tg-theme-button-color);
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⭐ Upgrade to Pro</h1>
+        <p>Unlock unlimited checks and advanced features!</p>
+
+        <div id="loading">Loading products...</div>
+        <div id="product-list" class="product-list hidden"></div>
+        <div id="success-message" class="hidden">
+            <h2>🎉 You are Pro!</h2>
+            <p>Thank you for your purchase.</p>
+        </div>
+
+        <button class="restore-btn" id="restore-btn">Restore Purchases</button>
+    </div>
+
+    <!-- Load RevenueCat logic as module -->
+    <script type="module">
+        import { configureRevenueCat, loginRevenueCat, getOfferings, purchasePackage, isPro, restorePurchases } from './revenuecat.js';
+
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // 1. Initialize
+        const user = tg.initDataUnsafe?.user;
+        const userId = user ? user.id.toString() : null; // Use Telegram ID if available
+
+        configureRevenueCat(userId);
+
+        async function init() {
+            // Check if already Pro
+            if (userId) await loginRevenueCat(userId);
+            
+            const proStatus = await isPro();
+            if (proStatus) {
+                showSuccess();
+                return;
+            }
+
+            loadProducts();
+        }
+
+        async function loadProducts() {
+            try {
+                const offering = await getOfferings();
+                
+                if (!offering || !offering.availablePackages.length) {
+                    document.getElementById('loading').innerText = "No products found.";
+                    return;
+                }
+
+                document.getElementById('loading').classList.add('hidden');
+                const list = document.getElementById('product-list');
+                list.classList.remove('hidden');
+
+                // Sort order: Yearly -> Monthly -> Weekly
+                const priority = ['yearly', 'six_month', 'three_month', 'two_month', 'monthly', 'weekly', 'consumable'];
+                
+                const sortedPackages = offering.availablePackages.sort((a, b) => {
+                    return priority.indexOf(a.storeProduct.identifier) - priority.indexOf(b.storeProduct.identifier);
+                });
+
+                sortedPackages.forEach(pkg => {
+                    const btn = document.createElement('button');
+                    btn.className = 'product-btn';
+                    const price = pkg.storeProduct.priceString;
+                    const title = pkg.storeProduct.title;
+                    btn.innerText = `${title} - ${price}`;
+                    
+                    btn.onclick = () => handlePurchase(pkg, btn);
+                    list.appendChild(btn);
+                });
+
+            } catch (e) {
+                document.getElementById('loading').innerText = "Error loading products.";
+                console.error(e);
+            }
+        }
+
+        async function handlePurchase(pkg, btn) {
+            btn.disabled = true;
+            btn.innerText = "Processing...";
+            try {
+                const info = await purchasePackage(pkg);
+                const isNowPro = info?.entitlements?.active?.['Nah Thats Fake Pro'];
+                
+                if (isNowPro) {
+                    showSuccess();
+                } else {
+                    alert("Purchase successful, but Pro status not detected yet.");
+                    btn.disabled = false;
+                    btn.innerText = "Try Again";
+                }
+            } catch (e) {
+                if (!e.userCancelled) alert("Purchase failed. Please try again.");
+                btn.disabled = false;
+                btn.innerText = "Buy";
+            }
+        }
+
+        document.getElementById('restore-btn').onclick = async () => {
+            try {
+                const info = await restorePurchases();
+                if (info?.entitlements?.active?.['Nah Thats Fake Pro']) {
+                    showSuccess();
+                    alert("Purchases restored!");
+                } else {
+                    alert("No active subscriptions found.");
+                }
+            } catch (e) {
+                alert("Restore failed.");
+            }
+        };
+
+        function showSuccess() {
+            document.getElementById('product-list').classList.add('hidden');
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('restore-btn').classList.add('hidden');
+            document.getElementById('success-message').classList.remove('hidden');
+        }
+
+        init();
+    </script>
+</body>
+</html>
