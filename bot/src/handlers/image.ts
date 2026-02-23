@@ -90,6 +90,18 @@ export async function processImageCheck(ctx: Context) {
     const riskEmoji = result.risk_level === 'HIGH' ? '🔴' : result.risk_level === 'MEDIUM' ? '🟡' : '🟢';
     const scorePercent = (result.score * 100).toFixed(1);
 
+    // Get Referral Link for Share
+    const { data: userRef } = await supabase
+      .from('users')
+      .select('referral_code')
+      .eq('telegram_user_id', telegramUserId)
+      .single();
+    
+    const refCode = userRef?.referral_code || '';
+    const botUsername = ctx.me.username;
+    const shareLink = `https://t.me/${botUsername}?start=${refCode}`;
+    const shareText = `I just checked this image with @${botUsername}!\n\nResult: ${riskEmoji} ${result.risk_level} (${scorePercent}% Fake)\n\nCheck yours here: ${shareLink}`;
+
     await ctx.reply(`${riskEmoji} *Deepfake Detection Result*
 
 Risk Level: *${result.risk_level}*
@@ -98,7 +110,12 @@ Artificial Probability: *${scorePercent}%*
 ${result.cached ? '⚡ Cached result' : '🔄 Fresh analysis'}
 
 ⚠️ *Always verify sources yourself!*`, {
-      parse_mode: 'Markdown'
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📢 Share Result & Earn Credits', url: `https://t.me/share/url?url=${encodeURIComponent(shareLink)}&text=${encodeURIComponent(shareText)}` }]
+        ]
+      }
     });
 
   } catch (error) {

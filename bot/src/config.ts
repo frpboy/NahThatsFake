@@ -19,7 +19,7 @@ export const config = {
   SIGHTENGINE_API_SECRET: process.env.SIGHTENGINE_API_SECRET,
   GOOGLE_SAFE_BROWSING_KEY: process.env.GOOGLE_SAFE_BROWSING_KEY,
   VIRUSTOTAL_API_KEY: process.env.VIRUSTOTAL_API_KEY,
-  TMA_URL: process.env.TMA_URL || 'https://google.com'
+  TMA_URL: process.env.TMA_URL || 'https://nahthatsfake.vercel.app'
 };
 
 export function validateConfig() {

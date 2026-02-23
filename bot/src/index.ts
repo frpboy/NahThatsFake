@@ -109,7 +109,8 @@ bot.command('start', async (ctx) => {
     // New user - generate referral code
     const referralCode = generateReferralCode();
     
-    await supabase.from('users').insert({
+    // Insert new user
+    const { data: newUser } = await supabase.from('users').insert({
       telegram_user_id: user.id.toString(),
       first_name: user.first_name,
       last_name: user.last_name,
@@ -117,7 +118,37 @@ bot.command('start', async (ctx) => {
       referral_code: referralCode,
       referred_by: referredBy,
       updated_at: new Date().toISOString()
-    });
+    }).select().single();
+
+    // Process Referral Reward
+    if (referredBy && newUser) {
+      // Find referrer by code
+      const { data: referrer } = await supabase
+        .from('users')
+        .select('id, telegram_user_id')
+        .eq('referral_code', referredBy)
+        .single();
+      
+      if (referrer) {
+        // Award credits via RPC
+        await supabase.rpc('process_referral_reward', {
+          referrer_id: referrer.id,
+          referee_id: newUser.id
+        });
+        
+        // Notify referrer
+        try {
+          await ctx.api.sendMessage(referrer.telegram_user_id, `🎉 *New Referral!*
+          
+Someone just joined using your link.
+You earned *2 credits*!
+
+Total referrals: Check /refer`);
+        } catch (e) {
+          // Ignore if referrer blocked bot
+        }
+      }
+    }
 
     // Send welcome message
     await ctx.reply(`🤖 *Nah That's Fake* - Your BS Detector
@@ -207,12 +238,33 @@ bot.command('refer', async (ctx) => {
 
 Share this link: ${referralLink}
 
-📈 You get: 1 credit per friend
-🎉 They get: 2 bonus credits
+📈 You get: 2 credits per friend
+🎉 They get: 1 bonus credit
 
 *Total referrals so far: 0*`, {
     parse_mode: 'Markdown'
   });
+});
+
+// Command: /top (Leaderboard)
+bot.command('top', async (ctx) => {
+  const { data: topUsers } = await supabase
+    .from('users')
+    .select('first_name, referral_count')
+    .order('referral_count', { ascending: false })
+    .limit(10);
+
+  if (!topUsers || topUsers.length === 0) {
+    return ctx.reply('No data yet.');
+  }
+
+  let text = '🏆 *Referral Leaderboard*\n\n';
+  topUsers.forEach((u, i) => {
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+    text += `${medal} ${u.first_name || 'User'} - ${u.referral_count || 0} invites\n`;
+  });
+
+  await ctx.reply(text, { parse_mode: 'Markdown' });
 });
 
 // Command: /history

@@ -98,6 +98,18 @@ export async function processLinkCheck(ctx: Context) {
     const riskEmoji = result.risk_level === 'HIGH' ? '🔴' : result.risk_level === 'MEDIUM' ? '🟡' : '🟢';
     const scorePercent = (result.score * 100).toFixed(1);
     
+    // Get Referral Link for Share
+    const { data: userRef } = await supabase
+      .from('users')
+      .select('referral_code')
+      .eq('telegram_user_id', telegramUserId)
+      .single();
+
+    const refCode = userRef?.referral_code || '';
+    const botUsername = ctx.me.username;
+    const shareLink = `https://t.me/${botUsername}?start=${refCode}`;
+    const shareText = `I just checked this link with @${botUsername}!\n\nLink: ${url}\nResult: ${riskEmoji} ${result.risk_level} (${scorePercent}% Risk)\n\nCheck yours here: ${shareLink}`;
+
     await ctx.reply(`${riskEmoji} *Link Check Result*
 
 URL: \`${url}\`
@@ -111,9 +123,10 @@ ${result.cached ? '⚡ Cached result' : '🔄 Fresh analysis'}
 Need a detailed report? Open the full app for more insights.`, {
       parse_mode: 'Markdown',
       reply_markup: {
-        inline_keyboard: [[
-          { text: '📱 Open Full Report', web_app: { url: process.env.TMA_URL || 'https://google.com' } }
-        ]]
+        inline_keyboard: [
+          [{ text: '📱 Open Full Report', web_app: { url: process.env.TMA_URL || 'https://google.com' } }],
+          [{ text: '📢 Share Result & Earn Credits', url: `https://t.me/share/url?url=${encodeURIComponent(shareLink)}&text=${encodeURIComponent(shareText)}` }]
+        ]
       }
     });
 
