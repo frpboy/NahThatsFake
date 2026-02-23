@@ -4,20 +4,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/tma/server.js"
-    },
-    {
-      "source": "/bot/(.*)",
-      "destination": "/bot/dist/index.js"
+      "destination": "/tma/api/index.js"
     },
     {
       "source": "/(.*)",
-      "destination": "/tma/$1"
+      "destination": "/tma/public/index.html"
     }
-  ],
-  "functions": {
-    "tma/server.js": {
-      "runtime": "nodejs18.x"
-    }
-  }
+  ]
 }
