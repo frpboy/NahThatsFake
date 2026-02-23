@@ -4,12 +4,19 @@ import { Context, NextFunction } from 'grammy';
 const rateLimits = new Map<string, { count: number; windowStart: number }>();
 const WINDOW_MS = 60000; // 1 minute
 const MAX_REQUESTS = 10;
+const OWNER_ID = process.env.OWNER_TELEGRAM_ID;
 
 export async function rateLimitMiddleware(ctx: Context, next: NextFunction) {
   const user = ctx.from;
   if (!user) return next();
 
   const userId = user.id.toString();
+
+  // 🚀 OWNER = unlimited (bypass rate limit)
+  if (OWNER_ID && userId === OWNER_ID) {
+    return next();
+  }
+
   const now = Date.now();
   
   const userLimit = rateLimits.get(userId) || { count: 0, windowStart: now };

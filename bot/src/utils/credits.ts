@@ -31,7 +31,14 @@ export async function checkCredits(telegramUserId: string): Promise<UserCredits>
   };
 }
 
+const OWNER_ID = process.env.OWNER_TELEGRAM_ID;
+
 export async function consumeCredit(telegramUserId: string, type: 'daily' | 'permanent'): Promise<boolean> {
+  // 🔥 OWNER = unlimited
+  if (OWNER_ID && telegramUserId === OWNER_ID) {
+    return true;
+  }
+
   const { data: user } = await supabase
     .from('users')
     .select('daily_credits, permanent_credits, plan, premium_until')
