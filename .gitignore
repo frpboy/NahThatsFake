@@ -103,6 +103,7 @@ Thumbs.db
 
 # Database dumps
 *.sql
+!supabase/migrations/*.sql
 *.sqlite
 *.db
 

@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nah That's Fake - Premium</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <style>
         :root {
             --tg-theme-bg-color: var(--tg-theme-bg-color, #ffffff);
             --tg-theme-text-color: var(--tg-theme-text-color, #000000);
             --tg-theme-button-color: var(--tg-theme-button-color, #2481cc);
             --tg-theme-button-text-color: var(--tg-theme-button-text-color, #ffffff);
+            --tg-theme-hint-color: var(--tg-theme-hint-color, #999999);
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -23,154 +24,231 @@
         .container { max-width: 400px; margin: 0 auto; }
         h1 { margin-bottom: 10px; }
         p { opacity: 0.8; margin-bottom: 20px; }
-        .product-list { display: flex; flex-direction: column; gap: 10px; }
-        .product-btn {
+        
+        .section-title {
+            text-align: left;
+            margin: 20px 0 10px 0;
+            font-size: 14px;
+            text-transform: uppercase;
+            color: var(--tg-theme-hint-color);
+            font-weight: bold;
+        }
+
+        .plan-card {
+            background: rgba(0,0,0,0.05);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            text-align: left;
+        }
+        .dark .plan-card { background: rgba(255,255,255,0.1); }
+        
+        .plan-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .plan-title { font-weight: bold; font-size: 18px; }
+        .plan-price { font-weight: bold; color: var(--tg-theme-button-color); }
+        .plan-desc { font-size: 14px; opacity: 0.8; margin-bottom: 12px; }
+        
+        .btn {
             background: var(--tg-theme-button-color);
             color: var(--tg-theme-button-text-color);
             border: none;
-            padding: 15px;
-            border-radius: 10px;
-            font-size: 16px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
             cursor: pointer;
             width: 100%;
+            margin-top: 8px;
         }
-        .product-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .restore-btn {
-            margin-top: 20px;
-            background: transparent;
-            color: var(--tg-theme-button-color);
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-        }
+        .btn-stars { background: #FFD700; color: #000; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        
         .hidden { display: none; }
+        .error { color: #ff3b30; margin-top: 10px; font-size: 14px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>⭐ Upgrade to Pro</h1>
-        <p>Unlock unlimited checks and advanced features!</p>
+        <p>Unlock unlimited checks & advanced features!</p>
 
-        <div id="loading">Loading products...</div>
-        <div id="product-list" class="product-list hidden"></div>
-        <div id="success-message" class="hidden">
-            <h2>🎉 You are Pro!</h2>
-            <p>Thank you for your purchase.</p>
+        <div class="section-title">Individual Plans</div>
+
+        <!-- Weekly Plan -->
+        <div class="plan-card">
+            <div class="plan-header">
+                <span class="plan-title">Weekly Pass</span>
+                <span class="plan-price">₹29 / 150 ⭐</span>
+            </div>
+            <div class="plan-desc">Unlimited checks for 7 days. Perfect for quick needs.</div>
+            <button class="btn" onclick="payRazorpay('ind_weekly', 2900)">Pay ₹29 (UPI/Card)</button>
+            <button class="btn btn-stars" onclick="payStars('ind_weekly', 150)">Pay 150 Stars</button>
         </div>
 
-        <button class="restore-btn" id="restore-btn">Restore Purchases</button>
+        <!-- Monthly Plan -->
+        <div class="plan-card">
+            <div class="plan-header">
+                <span class="plan-title">Monthly</span>
+                <span class="plan-price">₹99 / 500 ⭐</span>
+            </div>
+            <div class="plan-desc">Unlimited checks for 30 days. Most popular.</div>
+            <button class="btn" onclick="payRazorpay('ind_monthly', 9900)">Pay ₹99 (UPI/Card)</button>
+            <button class="btn btn-stars" onclick="payStars('ind_monthly', 500)">Pay 500 Stars</button>
+        </div>
+
+        <!-- Annual Plan -->
+        <div class="plan-card">
+            <div class="plan-header">
+                <span class="plan-title">Annual (Best Value)</span>
+                <span class="plan-price">₹799 / 4000 ⭐</span>
+            </div>
+            <div class="plan-desc">Unlimited checks for 365 days. Save 33%!</div>
+            <button class="btn" onclick="payRazorpay('ind_annual', 79900)">Pay ₹799 (UPI/Card)</button>
+            <button class="btn btn-stars" onclick="payStars('ind_annual', 4000)">Pay 4000 Stars</button>
+        </div>
+
+        <div class="section-title">Credit Packs (No Expiry)</div>
+
+        <!-- Credit Pack 50 -->
+        <div class="plan-card">
+            <div class="plan-header">
+                <span class="plan-title">50 Credits</span>
+                <span class="plan-price">₹49 / 250 ⭐</span>
+            </div>
+            <div class="plan-desc">Add 50 permanent checks. Never expires.</div>
+            <button class="btn" onclick="payRazorpay('credits_50', 4900)">Pay ₹49 (UPI/Card)</button>
+            <button class="btn btn-stars" onclick="payStars('credits_50', 250)">Pay 250 Stars</button>
+        </div>
+
+         <!-- Credit Pack 100 -->
+         <div class="plan-card">
+            <div class="plan-header">
+                <span class="plan-title">100 Credits</span>
+                <span class="plan-price">₹89 / 450 ⭐</span>
+            </div>
+            <div class="plan-desc">Add 100 permanent checks. Best value pack.</div>
+            <button class="btn" onclick="payRazorpay('credits_100', 8900)">Pay ₹89 (UPI/Card)</button>
+            <button class="btn btn-stars" onclick="payStars('credits_100', 450)">Pay 450 Stars</button>
+        </div>
+
+        <div id="status-message" class="hidden"></div>
     </div>
 
-    <!-- Load RevenueCat logic as module -->
-    <script type="module">
-        import { configureRevenueCat, loginRevenueCat, getOfferings, purchasePackage, isPro, restorePurchases } from './revenuecat.js';
-
+    <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // 1. Initialize
         const user = tg.initDataUnsafe?.user;
-        const userId = user ? user.id.toString() : null; // Use Telegram ID if available
+        const userId = user ? user.id : null;
 
-        configureRevenueCat(userId);
-
-        async function init() {
-            // Check if already Pro
-            if (userId) await loginRevenueCat(userId);
+        // 1. Telegram Stars Payment
+        function payStars(planId, amount) {
+            if (!userId) return alert("Please open from Telegram");
             
-            const proStatus = await isPro();
-            if (proStatus) {
-                showSuccess();
-                return;
-            }
-
-            loadProducts();
-        }
-
-        async function loadProducts() {
-            try {
-                const offering = await getOfferings();
-                
-                if (!offering || !offering.availablePackages.length) {
-                    document.getElementById('loading').innerText = "No products found.";
-                    return;
-                }
-
-                document.getElementById('loading').classList.add('hidden');
-                const list = document.getElementById('product-list');
-                list.classList.remove('hidden');
-
-                // Sort order: Yearly -> Monthly -> Weekly
-                const priority = ['yearly', 'six_month', 'three_month', 'two_month', 'monthly', 'weekly', 'consumable'];
-                
-                const sortedPackages = offering.availablePackages.sort((a, b) => {
-                    return priority.indexOf(a.storeProduct.identifier) - priority.indexOf(b.storeProduct.identifier);
-                });
-
-                sortedPackages.forEach(pkg => {
-                    const btn = document.createElement('button');
-                    btn.className = 'product-btn';
-                    const price = pkg.storeProduct.priceString;
-                    const title = pkg.storeProduct.title;
-                    btn.innerText = `${title} - ${price}`;
-                    
-                    btn.onclick = () => handlePurchase(pkg, btn);
-                    list.appendChild(btn);
-                });
-
-            } catch (e) {
-                document.getElementById('loading').innerText = "Error loading products.";
-                console.error(e);
-            }
-        }
-
-        async function handlePurchase(pkg, btn) {
-            btn.disabled = true;
-            btn.innerText = "Processing...";
-            try {
-                const info = await purchasePackage(pkg);
-                const isNowPro = info?.entitlements?.active?.['Nah Thats Fake Pro'];
-                
-                if (isNowPro) {
-                    showSuccess();
-                    // Optional: Call your backend to force sync (if implemented)
-                    // fetch('/api/sync-premium', { method: 'POST', body: JSON.stringify({ userId }) });
+            setStatus("Creating Stars invoice...", false);
+            
+            fetch('/api/payment/create-stars-invoice', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, planId, amount })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.invoiceLink) {
+                    tg.openInvoice(data.invoiceLink, (status) => {
+                        if (status === 'paid') {
+                            setStatus("🎉 Payment successful!", false);
+                            setTimeout(() => tg.close(), 2000);
+                        } else {
+                            setStatus("Payment cancelled or failed.", true);
+                        }
+                    });
                 } else {
-                    alert("Purchase successful. Premium features will activate shortly.");
-                    btn.disabled = false;
-                    btn.innerText = "Check Status";
+                    setStatus("Failed to create invoice.", true);
                 }
-            } catch (e) {
-                if (!e.userCancelled) alert("Purchase failed. Please try again.");
-                btn.disabled = false;
-                btn.innerText = "Buy";
-            }
+            })
+            .catch(e => setStatus("Error: " + e.message, true));
         }
 
-        document.getElementById('restore-btn').onclick = async () => {
-            try {
-                const info = await restorePurchases();
-                if (info?.entitlements?.active?.['Nah Thats Fake Pro']) {
-                    showSuccess();
-                    alert("Purchases restored!");
+        // 2. Razorpay Payment
+        function payRazorpay(planId, amountPaise) {
+            if (!userId) return alert("Please open from Telegram");
+            
+            setStatus("Creating Razorpay order...", false);
+
+            fetch('/api/payment/create-razorpay-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, planId, amount: amountPaise })
+            })
+            .then(r => r.json())
+            .then(order => {
+                if (order.error) throw new Error(order.error);
+                
+                const options = {
+                    key: order.keyId,
+                    amount: order.amount,
+                    currency: "INR",
+                    name: "Nah That's Fake",
+                    description: "Premium Subscription",
+                    order_id: order.id,
+                    handler: function (response) {
+                        verifyRazorpay(response, planId);
+                    },
+                    prefill: {
+                        name: user.first_name,
+                        contact: "" 
+                    },
+                    theme: {
+                        color: "#2481cc"
+                    }
+                };
+                
+                const rzp1 = new Razorpay(options);
+                rzp1.on('payment.failed', function (response){
+                    setStatus("Payment Failed: " + response.error.description, true);
+                });
+                rzp1.open();
+            })
+            .catch(e => setStatus("Error: " + e.message, true));
+        }
+
+        function verifyRazorpay(response, planId) {
+            setStatus("Verifying payment...", false);
+            
+            fetch('/api/payment/verify-razorpay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId,
+                    planId,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_signature: response.razorpay_signature
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    setStatus("🎉 Payment successful!", false);
+                    setTimeout(() => tg.close(), 2000);
                 } else {
-                    alert("No active subscriptions found.");
+                    setStatus("Verification failed. Contact support.", true);
                 }
-            } catch (e) {
-                alert("Restore failed.");
-            }
-        };
-
-        function showSuccess() {
-            document.getElementById('product-list').classList.add('hidden');
-            document.getElementById('loading').classList.add('hidden');
-            document.getElementById('restore-btn').classList.add('hidden');
-            document.getElementById('success-message').classList.remove('hidden');
-            // Hardening: Don't imply instant unlock if webhook is delayed
-            document.querySelector('#success-message p').innerText = "Payment successful. Premium will activate shortly.";
+            })
+            .catch(e => setStatus("Error verifying: " + e.message, true));
         }
 
-        init();
+        function setStatus(msg, isError) {
+            const el = document.getElementById('status-message');
+            el.innerText = msg;
+            el.className = isError ? "error" : "status";
+            el.style.display = 'block';
+        }
     </script>
 </body>
 </html>

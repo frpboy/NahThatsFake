@@ -1,25 +1,25 @@
-
 import { Bot } from 'grammy';
-import dotenv from 'dotenv';
 import { supabase } from './supabase';
 import { generateReferralCode } from './utils/referral';
 import { checkCredits } from './utils/credits';
 import { processImageCheck } from './handlers/image';
 import { processLinkCheck } from './handlers/link';
-import { handlePayment } from './handlers/payment';
+import { handlePreCheckout, handleSuccessfulPayment } from './handlers/payment';
+import { handleLinkGroup } from './handlers/group';
 import { rateLimitMiddleware } from './middleware/rateLimit';
 import { consentMiddleware } from './middleware/consent';
-import { isOwner } from './utils/isOwner';
+import { isOwner, isAdmin, getRole } from './utils/roles';
+import { logAdminAction } from './utils/adminLogger';
+import { startScheduler } from './services/scheduler';
+import { config, validateConfig } from './config';
 
-dotenv.config();
+// Validate environment variables
+validateConfig();
 
-const botToken = process.env.BOT_TOKEN;
+export const bot = new Bot(config.BOT_TOKEN);
 
-if (!botToken) {
-  throw new Error('BOT_TOKEN is not defined in .env');
-}
-
-export const bot = new Bot(botToken);
+// Start Scheduler
+startScheduler();
 
 // Middleware
 bot.use(rateLimitMiddleware);
@@ -29,19 +29,48 @@ bot.use(async (ctx, next) => {
   const user = ctx.from;
   if (!user) return next();
 
-  // Bypass for owner
-  if (isOwner(ctx)) return next();
+  // Bypass for admins/owners
+  if (await isAdmin(user.id.toString())) return next();
 
   const { data } = await supabase
     .from('users')
-    .select('is_banned, banned_reason')
+    .select('is_banned, banned_reason, banned_until, is_throttled, throttled_until')
     .eq('telegram_user_id', user.id.toString())
     .single();
 
+  const now = new Date();
+
+  // Check Ban
   if (data?.is_banned) {
-    // Silent ignore or notify
-    // await ctx.reply(`🚫 You are banned.\nReason: ${data.banned_reason || 'Policy violation'}`);
-    return;
+    // Check if ban expired
+    if (data.banned_until && new Date(data.banned_until) < now) {
+      // Unban automatically (lazy unban)
+      await supabase.from('users').update({ 
+        is_banned: false, 
+        banned_until: null,
+        banned_reason: null
+      }).eq('telegram_user_id', user.id.toString());
+    } else {
+      // Still banned
+      return;
+    }
+  }
+
+  // Check Throttle
+  if (data?.is_throttled) {
+    if (data.throttled_until && new Date(data.throttled_until) < now) {
+      // Unthrottle automatically (lazy unthrottle)
+      await supabase.from('users').update({
+        is_throttled: false,
+        throttled_until: null
+      }).eq('telegram_user_id', user.id.toString());
+    } else {
+      // User is throttled - Allow only 1 request per minute? 
+      // Or just block for now to keep it simple as "Cooldown"
+      // Let's block with a message
+      await ctx.reply('⚠️ You are temporarily throttled due to excessive activity. Please try again later.');
+      return;
+    }
   }
 
   await next();
@@ -213,7 +242,7 @@ bot.command('history', async (ctx) => {
     historyText += `${index + 1}. ${type} ${date} - ${risk} (${score}%)\n`;
   });
 
-  const tmaUrl = process.env.TMA_URL || 'https://google.com';
+  const tmaUrl = config.TMA_URL;
   historyText += `\n📱 View full history in the app: ${tmaUrl}`;
 
   await ctx.reply(historyText, { parse_mode: 'Markdown' });
@@ -233,20 +262,30 @@ Pay with UPI, cards, or Telegram Stars!`, {
     parse_mode: 'Markdown',
     reply_markup: {
       inline_keyboard: [[
-        { text: 'Upgrade Now', web_app: { url: `${process.env.TMA_URL}/premium.html` } }
+        { text: 'Upgrade Now', web_app: { url: `${config.TMA_URL}/premium.html` } }
       ]]
     }
   });
 });
 
+// Command: /linkgroup
+bot.command('linkgroup', handleLinkGroup);
+
 // -----------------------------------------------------------------------------
-// 👑 OWNER COMMANDS
+// PAYMENT HANDLERS (STARS)
+// -----------------------------------------------------------------------------
+bot.on('pre_checkout_query', handlePreCheckout);
+bot.on('message:successful_payment', handleSuccessfulPayment);
+
+// -----------------------------------------------------------------------------
+// 👑 ADMIN / OWNER COMMANDS
 // -----------------------------------------------------------------------------
 
 // Command: /whoami
 bot.command('whoami', async (ctx) => {
   if (!ctx.from) return;
-  await ctx.reply(`🆔 Your Telegram ID:\n\`${ctx.from.id}\``, {
+  const role = await getRole(ctx.from.id.toString());
+  await ctx.reply(`🆔 ID: \`${ctx.from.id}\`\n🎭 Role: *${role.toUpperCase()}*`, {
     parse_mode: 'Markdown'
   });
 });
@@ -255,7 +294,7 @@ bot.command('whoami', async (ctx) => {
 bot.command('admin', async (ctx) => {
   if (!ctx.from) return;
 
-  if (ctx.from.id.toString() !== process.env.OWNER_TELEGRAM_ID) {
+  if (!await isAdmin(ctx.from.id.toString())) {
     return ctx.reply('⛔ Access denied');
   }
 
@@ -263,17 +302,19 @@ bot.command('admin', async (ctx) => {
 
 /stats – Platform stats 
 /users – Total users 
-/givecredits <id> <n> 
-/ban <id> | /unban <id> 
-/broadcast 
-/health`, {
+/ban <id> – Ban user
+/unban <id> – Unban user
+/broadcast – Message all users
+/health – System health
+/givecredits <id> <amount> – Give credits
+/setplan <id> <plan> <days> - Manual plan`, {
     parse_mode: 'Markdown'
   });
 });
 
 // Command: /stats
 bot.command('stats', async (ctx) => {
-  if (!ctx.from || ctx.from.id.toString() !== process.env.OWNER_TELEGRAM_ID) return;
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
 
   const { count: users } = await supabase
     .from('users')
@@ -293,7 +334,7 @@ bot.command('stats', async (ctx) => {
 
 // Command: /ban <id> <reason>
 bot.command('ban', async (ctx) => {
-  if (!isOwner(ctx)) return;
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
 
   const args = ctx.message?.text.split(' ');
   if (!args || args.length < 2) {
@@ -316,12 +357,13 @@ bot.command('ban', async (ctx) => {
     return ctx.reply('❌ Failed to ban user. Check user ID.');
   }
 
+  await logAdminAction(ctx.from.id.toString(), 'BAN_USER', { reason }, userId);
   ctx.reply(`🚫 User ${userId} banned. Reason: ${reason}`);
 });
 
 // Command: /unban <id>
 bot.command('unban', async (ctx) => {
-  if (!isOwner(ctx)) return;
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
 
   const args = ctx.message?.text.split(' ');
   if (!args || args.length !== 2) {
@@ -343,7 +385,87 @@ bot.command('unban', async (ctx) => {
     return ctx.reply('❌ Failed to unban user. Check user ID.');
   }
 
+  await logAdminAction(ctx.from.id.toString(), 'UNBAN_USER', {}, userId);
   ctx.reply(`✅ User ${userId} unbanned`);
+});
+
+// Command: /givecredits <id> <amount>
+bot.command('givecredits', async (ctx) => {
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
+
+  const args = ctx.message?.text.split(' ');
+  if (!args || args.length !== 3) {
+    return ctx.reply('Usage: /givecredits <userId> <amount>');
+  }
+
+  const userId = args[1];
+  const amount = parseInt(args[2]);
+
+  if (isNaN(amount)) {
+    return ctx.reply('Invalid amount');
+  }
+
+  // Get current credits first
+  const { data: user } = await supabase
+    .from('users')
+    .select('permanent_credits')
+    .eq('telegram_user_id', userId)
+    .single();
+
+  if (!user) {
+    return ctx.reply('User not found');
+  }
+
+  const newAmount = (user.permanent_credits || 0) + amount;
+
+  const { error } = await supabase
+    .from('users')
+    .update({ permanent_credits: newAmount })
+    .eq('telegram_user_id', userId);
+
+  if (error) {
+    return ctx.reply('❌ Failed to give credits');
+  }
+
+  await logAdminAction(ctx.from.id.toString(), 'GIVE_CREDITS', { amount }, userId);
+  ctx.reply(`✅ Given ${amount} credits to ${userId}. New balance: ${newAmount}`);
+});
+
+// Command: /setplan <id> <plan> <days>
+bot.command('setplan', async (ctx) => {
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
+
+  const args = ctx.message?.text.split(' ');
+  if (!args || args.length !== 4) {
+    return ctx.reply('Usage: /setplan <userId> <plan_id> <days>');
+  }
+
+  const userId = args[1];
+  const planId = args[2];
+  const days = parseInt(args[3]);
+
+  if (isNaN(days)) {
+    return ctx.reply('Invalid days');
+  }
+
+  const premiumUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await supabase
+    .from('users')
+    .update({ 
+      plan: planId,
+      premium_until: premiumUntil,
+      updated_at: new Date().toISOString()
+    })
+    .eq('telegram_user_id', userId);
+
+  if (error) {
+    console.error('Set plan error:', error);
+    return ctx.reply(`❌ Failed to set plan. Ensure plan ID is valid: ${planId}`);
+  }
+
+  await logAdminAction(ctx.from.id.toString(), 'SET_PLAN', { planId, days }, userId);
+  ctx.reply(`✅ Set plan ${planId} for user ${userId} for ${days} days.`);
 });
 
 // Broadcast State
@@ -351,8 +473,7 @@ const broadcastState = new Map<number, boolean>();
 
 // Command: /broadcast
 bot.command('broadcast', async (ctx) => {
-  if (!isOwner(ctx)) return;
-  if (!ctx.from) return;
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
 
   broadcastState.set(ctx.from.id, true);
 
@@ -373,6 +494,21 @@ bot.command('cancel', async (ctx) => {
     broadcastState.delete(ctx.from.id);
     await ctx.reply('❌ Broadcast cancelled');
   }
+});
+
+// Command: /health
+bot.command('health', async (ctx) => {
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
+
+  const dbStart = Date.now();
+  const { error } = await supabase.from('users').select('id').limit(1);
+  const dbLatency = Date.now() - dbStart;
+
+  await ctx.reply(`🏥 *System Health*
+
+✅ Bot: Online
+✅ Database: ${error ? '❌ Error' : `Online (${dbLatency}ms)`}
+✅ Uptime: ${process.uptime().toFixed(0)}s`, { parse_mode: 'Markdown' });
 });
 
 // Group Protection
@@ -396,20 +532,18 @@ Contact admin or upgrade to enable protection.`,
 bot.command('help', async (ctx) => {
   if (!ctx.from) return;
 
-  if (ctx.from.id.toString() === process.env.OWNER_TELEGRAM_ID) {
-    return ctx.reply(`👑 *Owner Help*
-
-You have unlimited access.
+  if (await isAdmin(ctx.from.id.toString())) {
+    return ctx.reply(`👑 *Admin Help*
 
 Admin:
-/admin
-/stats
-/users
-/givecredits
-/ban
-/unban
-/broadcast
-/health`, { parse_mode: 'Markdown' });
+/admin - Dashboard
+/stats - Statistics
+/ban <id> - Ban user
+/unban <id> - Unban user
+/givecredits <id> <n> - Give credits
+/setplan <id> <plan> <days> - Manual plan
+/broadcast - Send announcement
+/whoami - Check role`, { parse_mode: 'Markdown' });
   }
 
   // Normal user help
@@ -438,10 +572,10 @@ bot.on('message:photo', async (ctx) => {
   const user = ctx.from;
   if (!user) return;
 
-  // Check consent first (bypass for owner)
-  const isOwner = user.id.toString() === process.env.OWNER_TELEGRAM_ID;
+  // Check consent first (bypass for admins)
+  const isUserAdmin = await isAdmin(user.id.toString());
   
-  if (!isOwner) {
+  if (!isUserAdmin) {
     const { data: userData } = await supabase
       .from('users')
       .select('consent_given')
@@ -520,7 +654,7 @@ Pay with UPI, cards, or Telegram Stars!`, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
-          { text: 'Upgrade Now', web_app: { url: `${process.env.TMA_URL}/premium.html` } }
+          { text: 'Upgrade Now', web_app: { url: `${config.TMA_URL}/premium.html` } }
         ]]
       }
     });
@@ -553,7 +687,7 @@ Commands:
     return ctx.reply('Open app 👇', {
       reply_markup: {
         inline_keyboard: [[
-          { text: '🚀 Open Nah That’s Fake', web_app: { url: process.env.TMA_URL || 'https://google.com' } }
+          { text: '🚀 Open Nah That’s Fake', web_app: { url: config.TMA_URL || 'https://google.com' } }
         ]]
       }
     });

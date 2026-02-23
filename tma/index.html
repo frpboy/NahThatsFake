@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -238,6 +237,22 @@
                         <span class="stat-label">Total Checks</span>
                     </div>
                 </div>
+                
+                <h4>Revenue Stats</h4>
+                <div class="stats-grid">
+                    <div class="stat-card" style="background: #1976d2;">
+                        <span class="stat-number" id="admin-revenue-inr">₹0</span>
+                        <span class="stat-label">Total Revenue (INR)</span>
+                    </div>
+                    <div class="stat-card" style="background: #fbc02d; color: #000;">
+                        <span class="stat-number" id="admin-revenue-stars">0</span>
+                        <span class="stat-label">Total Stars</span>
+                    </div>
+                </div>
+
+                <h4>Admin Actions</h4>
+                <button class="button" onclick="adminBroadcast()">📢 Broadcast Message</button>
+                <button class="button button-secondary" onclick="adminViewLogs()">📜 View Audit Logs</button>
             </div>
 
             <!-- Stats Section -->
@@ -297,6 +312,8 @@
             if (user) {
                 loadUserData();
                 loadChecks();
+                // Check if admin immediately
+                checkAdmin();
             } else {
                 showError('Unable to load user data. Please open this app from the bot.');
             }
@@ -306,13 +323,18 @@
         }
 
         // Check if user is admin
-        function checkAdmin() {
-            // Replace with your actual Owner ID
-            const OWNER_ID = 238776614; 
-            
-            if (user.id === OWNER_ID) {
-                document.getElementById('admin-dashboard').classList.remove('hidden');
-                loadAdminStats();
+        async function checkAdmin() {
+            try {
+                // Call backend to verify role
+                const res = await fetch(`/api/user/role?userId=${user.id}`);
+                const data = await res.json();
+                
+                if (data.role === 'owner' || data.role === 'admin') {
+                    document.getElementById('admin-dashboard').classList.remove('hidden');
+                    loadAdminStats();
+                }
+            } catch (e) {
+                console.error('Role check failed:', e);
             }
         }
 
@@ -324,8 +346,22 @@
                     document.getElementById('admin-users').textContent = d.users;
                     document.getElementById('admin-banned').textContent = d.banned;
                     document.getElementById('admin-checks').textContent = d.checks;
+                    document.getElementById('admin-revenue-inr').textContent = '₹' + (d.revenue?.inr || 0);
+                    document.getElementById('admin-revenue-stars').textContent = d.revenue?.stars || 0;
                 })
                 .catch(e => console.error('Admin stats error:', e));
+        }
+
+        function adminBroadcast() {
+            tg.showPopup({
+                title: 'Broadcast',
+                message: 'To send a broadcast, use the /broadcast command in the bot.',
+                buttons: [{type: 'ok'}]
+            });
+        }
+
+        function adminViewLogs() {
+            tg.showAlert('Audit logs viewer coming soon!');
         }
 
         // Apply Telegram theme
@@ -359,11 +395,17 @@
         // Load user data from Supabase
         async function loadUserData() {
             try {
-                // This would be replaced with actual Supabase client calls
-                // For now, using mock data
-                document.getElementById('user-username').textContent = user.username || user.first_name;
-                document.getElementById('user-plan').textContent = 'Free';
-                document.getElementById('user-created').textContent = new Date().toLocaleDateString();
+                // Fetch actual user data from backend
+                const res = await fetch(`/api/user/profile?userId=${user.id}`);
+                const profile = await res.json();
+
+                if (profile) {
+                    document.getElementById('user-username').textContent = profile.username || user.first_name;
+                    document.getElementById('user-plan').textContent = formatPlanName(profile.plan);
+                    document.getElementById('user-created').textContent = new Date(profile.created_at).toLocaleDateString();
+                    document.getElementById('credits-remaining').textContent = profile.daily_credits;
+                    document.getElementById('total-checks').textContent = profile.total_checks || 0; // Need to add total_checks to profile endpoint
+                }
                 
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('main-content').classList.remove('hidden');
@@ -372,31 +414,28 @@
             }
         }
 
+        function formatPlanName(plan) {
+            const names = {
+                'free': 'Free',
+                'ind_weekly': 'Weekly Pass',
+                'ind_monthly': 'Monthly Premium',
+                'ind_annual': 'Annual Premium',
+                'ind_lifetime': 'Lifetime',
+                'grp_monthly': 'Group Monthly',
+                'grp_annual': 'Group Annual'
+            };
+            return names[plan] || plan;
+        }
+
         // Load recent checks
         async function loadChecks() {
             try {
-                // Mock data for demonstration
-                const mockChecks = [
-                    {
-                        id: 1,
-                        type: 'image',
-                        risk_level: 'HIGH',
-                        score: 0.87,
-                        created_at: new Date(Date.now() - 3600000).toISOString()
-                    },
-                    {
-                        id: 2,
-                        type: 'link',
-                        risk_level: 'LOW',
-                        score: 0.12,
-                        created_at: new Date(Date.now() - 7200000).toISOString()
-                    }
-                ];
-
-                checks = mockChecks;
+                const res = await fetch(`/api/user/checks?userId=${user.id}`);
+                const data = await res.json();
+                checks = data.checks || [];
                 renderChecks();
             } catch (error) {
-                showError('Failed to load checks: ' + error.message);
+                console.error('Failed to load checks:', error);
             }
         }
 
@@ -410,20 +449,20 @@
             }
 
             container.innerHTML = checks.map(check => {
-                const icon = check.type === 'image' ? '🖼️' : '🔗';
-                const riskClass = `risk-${check.risk_level.toLowerCase()}`;
-                const scorePercent = Math.round(check.score * 100);
+                const icon = check.check_type === 'image' ? '🖼️' : '🔗';
+                const riskClass = `risk-${check.risk_level?.toLowerCase() || 'low'}`;
+                const scorePercent = check.score ? Math.round(check.score * 100) : 0;
                 const date = new Date(check.created_at).toLocaleDateString();
 
                 return `
                     <div class="check-item">
-                        <div class="check-icon ${check.type}">${icon}</div>
+                        <div class="check-icon ${check.check_type}">${icon}</div>
                         <div class="check-details">
-                            <div class="check-type">${check.type === 'image' ? 'Image' : 'Link'}</div>
+                            <div class="check-type">${check.check_type === 'image' ? 'Image' : 'Link'}</div>
                             <div class="check-date">${date}</div>
                         </div>
                         <div class="check-result">
-                            <div class="risk-badge ${riskClass}">${check.risk_level}</div>
+                            <div class="risk-badge ${riskClass}">${check.risk_level || 'UNKNOWN'}</div>
                             <div style="font-size: 12px; color: var(--tg-theme-hint-color);">${scorePercent}%</div>
                         </div>
                     </div>
@@ -455,8 +494,7 @@
 
         // Upgrade to premium
         function upgradePremium() {
-            // Open payment flow
-            tg.openLink('https://your-payment-url.com');
+            window.location.href = 'premium.html';
         }
 
         // Open bot

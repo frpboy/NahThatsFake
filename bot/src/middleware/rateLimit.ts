@@ -1,25 +1,26 @@
-
 import { Context, NextFunction } from 'grammy';
+import { supabase } from '../supabase';
+import { flagUser } from '../services/abuseDetection';
+import { config } from '../config';
 
 const rateLimits = new Map<string, { count: number; windowStart: number }>();
 const WINDOW_MS = 60000; // 1 minute
 const MAX_REQUESTS = 10;
-const OWNER_ID = process.env.OWNER_TELEGRAM_ID;
+const ABUSE_TRIGGER_THRESHOLD = 20; // 2x limit -> flag
 
 export async function rateLimitMiddleware(ctx: Context, next: NextFunction) {
   const user = ctx.from;
   if (!user) return next();
 
-  const userId = user.id.toString();
+  const telegramUserId = user.id.toString();
 
-  // 🚀 OWNER = unlimited (bypass rate limit)
-  if (OWNER_ID && userId === OWNER_ID) {
+  // Fast bypass for root owner
+  if (telegramUserId === config.OWNER_TELEGRAM_ID) {
     return next();
   }
 
   const now = Date.now();
-  
-  const userLimit = rateLimits.get(userId) || { count: 0, windowStart: now };
+  const userLimit = rateLimits.get(telegramUserId) || { count: 0, windowStart: now };
 
   if (now - userLimit.windowStart > WINDOW_MS) {
     // Reset window
@@ -29,11 +30,26 @@ export async function rateLimitMiddleware(ctx: Context, next: NextFunction) {
     userLimit.count++;
   }
 
-  rateLimits.set(userId, userLimit);
+  rateLimits.set(telegramUserId, userLimit);
 
   if (userLimit.count > MAX_REQUESTS) {
-    // Silent fail or warn user
-    // await ctx.reply('⚠️ Rate limit exceeded. Please wait a minute.');
+    // If they go way over, flag them
+    if (userLimit.count === ABUSE_TRIGGER_THRESHOLD) {
+       const { data: userData } = await supabase
+         .from('users')
+         .select('id')
+         .eq('telegram_user_id', telegramUserId)
+         .single();
+         
+       if (userData) {
+         await flagUser(userData.id, 'rate_limit_exceeded', {
+           count: userLimit.count,
+           limit: MAX_REQUESTS
+         });
+       }
+    }
+    
+    // Silent fail
     return; 
   }
 
