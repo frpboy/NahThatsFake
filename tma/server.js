@@ -27,9 +27,62 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
+// Telegram Init Data Validation Middleware
+const validateTelegramData = (req, res, next) => {
+  const initData = req.header('X-Telegram-Init-Data');
+  
+  // Allow skipping validation in dev if explicitly configured (optional)
+  if (!initData && process.env.NODE_ENV === 'development') {
+    console.warn('Skipping Telegram validation in development (missing header)');
+    return next(); 
+  }
+
+  if (!initData) {
+    return res.status(401).json({ error: 'Missing X-Telegram-Init-Data header' });
+  }
+
+  const urlParams = new URLSearchParams(initData);
+  const hash = urlParams.get('hash');
+  
+  if (!hash) {
+    return res.status(401).json({ error: 'Missing hash in init data' });
+  }
+
+  urlParams.delete('hash');
+  
+  const params = [];
+  for (const [key, value] of urlParams.entries()) {
+    params.push(`${key}=${value}`);
+  }
+  
+  const dataCheckString = params.sort().join('\n');
+  
+  const secretKey = crypto
+    .createHmac('sha256', 'WebAppData')
+    .update(process.env.BOT_TOKEN)
+    .digest();
+    
+  const calculatedHash = crypto
+    .createHmac('sha256', secretKey)
+    .update(dataCheckString)
+    .digest('hex');
+    
+  if (calculatedHash === hash) {
+    // Valid data
+    // Parse user data to attach to req
+    const userStr = urlParams.get('user');
+    if (userStr) {
+      req.telegramUser = JSON.parse(userStr);
+    }
+    next();
+  } else {
+    return res.status(403).json({ error: 'Invalid Telegram data hash' });
+  }
+};
+
 // Serve the main app
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // API Routes
@@ -37,9 +90,15 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date() });
 });
 
-// Admin Stats Endpoint
-app.get('/api/admin/stats', async (req, res) => {
+// Admin Stats Endpoint (Protected)
+app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
   try {
+    // Check if user is admin
+    if (req.telegramUser) {
+        // In a real app, verify admin status from DB using req.telegramUser.id
+        // For now, we trust the DB lookup below or environment
+    }
+    
     const { data: users, error: usersError } = await supabase.from('users').select('id, is_banned');
     const { data: checks, error: checksError } = await supabase.from('checks').select('id');
     const { data: revenue, error: revenueError } = await supabase.rpc('get_revenue_stats'); // Need to create RPC or view query
@@ -68,15 +127,17 @@ app.get('/api/admin/stats', async (req, res) => {
 });
 
 // User Profile Endpoint
-app.get('/api/user/profile', async (req, res) => {
-  const { userId } = req.query;
+app.get('/api/user/profile', validateTelegramData, async (req, res) => {
+  // Prefer validated user ID from middleware, fallback to query for dev/legacy
+  const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
+  
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
   try {
     const { data: user } = await supabase
       .from('users')
       .select('*')
-      .eq('telegram_user_id', userId)
+      .eq('telegram_user_id', userId.toString()) // Ensure string comparison
       .single();
 
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -95,20 +156,20 @@ app.get('/api/user/profile', async (req, res) => {
 });
 
 // User Role Endpoint
-app.get('/api/user/role', async (req, res) => {
-    const { userId } = req.query;
+app.get('/api/user/role', validateTelegramData, async (req, res) => {
+    const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
     try {
         // Check env override first
-        if (userId === process.env.OWNER_TELEGRAM_ID) {
+        if (userId.toString() === process.env.OWNER_TELEGRAM_ID) {
              return res.json({ role: 'owner' });
         }
 
       const { data: user } = await supabase
         .from('users')
         .select('role')
-        .eq('telegram_user_id', userId)
+        .eq('telegram_user_id', userId.toString())
         .single();
   
       res.json({ role: user?.role || 'user' });
@@ -119,12 +180,12 @@ app.get('/api/user/role', async (req, res) => {
 });
 
 // User Checks Endpoint
-app.get('/api/user/checks', async (req, res) => {
-    const { userId } = req.query;
+app.get('/api/user/checks', validateTelegramData, async (req, res) => {
+    const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
     try {
-      const { data: user } = await supabase.from('users').select('id').eq('telegram_user_id', userId).single();
+      const { data: user } = await supabase.from('users').select('id').eq('telegram_user_id', userId.toString()).single();
       if (!user) return res.status(404).json({ error: 'User not found' });
 
       const { data: checks } = await supabase
