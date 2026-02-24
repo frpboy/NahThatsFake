@@ -186,15 +186,14 @@ async function loadUserData() {
         const res = await fetch(`/api/user/profile?userId=${user.id}`, { headers });
         
         if (!res.ok) {
-             // Mock data if API fails (for development/demo without full backend)
-             console.warn('API failed, using mock data');
+             showError('Could not load your account right now. Please try again.');
              updateUI({
                  username: user.username || user.first_name,
                  plan: 'free',
                  created_at: new Date().toISOString(),
-                 daily_credits: 3,
-                 permanent_credits: 0,
-                 total_checks: 0
+                 daily_credits: '-',
+                 permanent_credits: '-',
+                 total_checks: '-'
              });
              return;
         }
@@ -204,7 +203,7 @@ async function loadUserData() {
         
     } catch (error) {
         console.error('Failed to load user data:', error);
-        // Don't show error to user immediately, try to degrade gracefully
+        showError('Could not load your account right now. Please try again.');
         updateUI({
             username: user.username || user.first_name,
             plan: 'unknown',
@@ -277,7 +276,7 @@ async function loadChecks() {
     } catch (error) {
         console.error('Failed to load checks:', error);
         if (currentPage === 1) {
-            document.getElementById('recent-checks').innerHTML = '<div class="loading">No checks found</div>';
+            document.getElementById('recent-checks').innerHTML = '<div class="loading">Unable to load checks</div>';
         }
     }
 }

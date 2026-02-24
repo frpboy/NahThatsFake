@@ -3,6 +3,8 @@ import { Context } from 'grammy';
 import { supabase } from '../supabase';
 import { consumeCredit } from '../utils/credits';
 import { checkUrlSafety } from '../services/urlscanner';
+import { getOrCreateUserByTelegram } from '../utils/user';
+import { config } from '../config';
 import crypto from 'crypto';
 
 export async function processLinkCheck(ctx: Context) {
@@ -15,6 +17,8 @@ export async function processLinkCheck(ctx: Context) {
   if (!text) return;
 
   try {
+    const dbUser = await getOrCreateUserByTelegram(user);
+
     // Extract URL from text
     const urlMatch = text.match(/https?:\/\/[^\s]+/);
     if (!urlMatch) {
@@ -25,8 +29,8 @@ export async function processLinkCheck(ctx: Context) {
     const url = urlMatch[0];
     
     // Check credits
-    const creditAvailable = await consumeCredit(telegramUserId, 'daily');
-    if (!creditAvailable) {
+    const creditSourceRaw = await consumeCredit(telegramUserId, 'daily');
+    if (!creditSourceRaw) {
       await ctx.reply(
 `🚫 *No credits left*
 
@@ -36,6 +40,8 @@ export async function processLinkCheck(ctx: Context) {
       );
       return;
     }
+
+    const creditSource = creditSourceRaw === 'owner' ? 'premium' : creditSourceRaw;
 
     await ctx.reply('🔍 Analyzing link safety...');
 
@@ -84,14 +90,14 @@ export async function processLinkCheck(ctx: Context) {
 
     // Record the check
     await supabase.from('checks').insert({
-      user_id: telegramUserId,
+      user_id: dbUser.id,
       check_type: 'link',
       content_hash: urlHash,
       score: result.score,
       risk_level: result.risk_level,
       cached: result.cached,
       api_source: result.api_source,
-      credit_source: creditAvailable ? 'daily' : 'permanent'
+      credit_source: creditSource
     });
 
     // Send result
@@ -124,7 +130,7 @@ Need a detailed report? Open the full app for more insights.`, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: '📱 Open Full Report', web_app: { url: process.env.TMA_URL || 'https://google.com' } }],
+          [{ text: '📱 Open Full Report', web_app: { url: config.TMA_URL || 'https://google.com' } }],
           [{ text: '📢 Share Result & Earn Credits', url: `https://t.me/share/url?url=${encodeURIComponent(shareLink)}&text=${encodeURIComponent(shareText)}` }]
         ]
       }

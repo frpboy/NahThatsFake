@@ -31,12 +31,15 @@ export async function checkCredits(telegramUserId: string): Promise<UserCredits>
   };
 }
 
-export async function consumeCredit(telegramUserId: string, type: 'daily' | 'permanent'): Promise<boolean> {
+export async function consumeCredit(
+  telegramUserId: string,
+  type: 'daily' | 'permanent'
+): Promise<'daily' | 'permanent' | 'premium' | 'owner' | null> {
   const OWNER_ID = process.env.OWNER_TELEGRAM_ID;
 
   // 🔥 OWNER = unlimited
   if (OWNER_ID && telegramUserId === OWNER_ID) {
-    return true;
+    return 'owner';
   }
 
   const { data: user } = await supabase
@@ -45,11 +48,11 @@ export async function consumeCredit(telegramUserId: string, type: 'daily' | 'per
     .eq('telegram_user_id', telegramUserId)
     .single();
 
-  if (!user) return false;
+  if (!user) return null;
 
   // Premium users have unlimited checks
   if (user.plan !== 'free' && new Date(user.premium_until) > new Date()) {
-    return true;
+    return 'premium';
   }
 
   if (type === 'daily') {
@@ -58,7 +61,7 @@ export async function consumeCredit(telegramUserId: string, type: 'daily' | 'per
         .from('users')
         .update({ daily_credits: user.daily_credits - 1 })
         .eq('telegram_user_id', telegramUserId);
-      return true;
+      return 'daily';
     }
     // Fallback to permanent credits if daily runs out
     if (user.permanent_credits > 0) {
@@ -66,9 +69,9 @@ export async function consumeCredit(telegramUserId: string, type: 'daily' | 'per
         .from('users')
         .update({ permanent_credits: user.permanent_credits - 1 })
         .eq('telegram_user_id', telegramUserId);
-      return true;
+      return 'permanent';
     }
   }
 
-  return false;
+  return null;
 }

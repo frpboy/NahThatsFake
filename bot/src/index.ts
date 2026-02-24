@@ -13,11 +13,32 @@ import { logAdminAction } from './utils/adminLogger';
 import { startScheduler } from './services/scheduler';
 import { fetchAdsGramAd } from './services/adsgram';
 import { config, validateConfig } from './config';
+import { getOrCreateUserByTelegram } from './utils/user';
 
 // Validate environment variables
 validateConfig();
 
 export const bot = new Bot(config.BOT_TOKEN);
+
+let cachedOwnerTelegramId: string | null = null;
+
+async function resolveOwnerTelegramId(): Promise<string | null> {
+  if (config.OWNER_TELEGRAM_ID) return config.OWNER_TELEGRAM_ID;
+  if (cachedOwnerTelegramId) return cachedOwnerTelegramId;
+
+  const { data } = await supabase
+    .from('users')
+    .select('telegram_user_id')
+    .eq('role', 'owner')
+    .maybeSingle();
+
+  if (data?.telegram_user_id) {
+    cachedOwnerTelegramId = data.telegram_user_id;
+    return cachedOwnerTelegramId;
+  }
+
+  return null;
+}
 
 async function sendSponsoredAd(ctx: Context) {
   if (!ctx.from) return;
@@ -181,6 +202,7 @@ bot.command('start', async (ctx) => {
       username: user.username,
       referral_code: referralCode,
       referred_by: referredBy,
+      daily_credits: 3,
       updated_at: new Date().toISOString()
     }).select().single();
 
@@ -355,10 +377,12 @@ bot.command('history', async (ctx) => {
   const user = ctx.from;
   if (!user) return;
 
+  const dbUser = await getOrCreateUserByTelegram(user);
+
   const { data: checks } = await supabase
     .from('checks')
     .select('*')
-    .eq('user_id', user.id.toString())
+    .eq('user_id', dbUser.id)
     .order('created_at', { ascending: false })
     .limit(5);
 
@@ -788,6 +812,111 @@ bot.on('message:document', async (ctx) => {
 // Handle text messages (links and menu buttons)
 bot.on('message:text', async (ctx) => {
   const text = ctx.message.text;
+  const userId = ctx.from?.id;
+
+  if (userId && broadcastState.has(userId) && await isAdmin(userId.toString())) {
+    broadcastState.delete(userId);
+
+    const { data: users } = await supabase
+      .from('users')
+      .select('telegram_user_id')
+      .limit(10000);
+
+    const targets = (users || [])
+      .map(u => u.telegram_user_id)
+      .filter(Boolean);
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const tgid of targets) {
+      try {
+        await ctx.api.sendMessage(tgid, text, { protect_content: true });
+        sent++;
+      } catch {
+        failed++;
+      }
+    }
+
+    await ctx.reply(`✅ Broadcast sent to ${sent} users${failed ? ` (failed: ${failed})` : ''}.`);
+    return;
+  }
+
+  if (userId && feedbackState.has(userId)) {
+    const state = feedbackState.get(userId);
+    if (state?.step === 'waiting_message') {
+      const { data, error } = await supabase
+        .from('feedback')
+        .insert({
+          telegram_user_id: userId.toString(),
+          username: ctx.from?.username,
+          first_name: ctx.from?.first_name,
+          type: state.type,
+          message: text,
+          status: 'open'
+        })
+        .select()
+        .single();
+
+      feedbackState.delete(userId);
+
+      if (error) {
+        await ctx.reply('❌ Could not submit feedback right now. Please try again.');
+        return;
+      }
+
+      await ctx.reply('✅ Thanks — your feedback has been submitted.');
+
+      const ownerTelegramId = await resolveOwnerTelegramId();
+      if (ownerTelegramId) {
+        try {
+          await ctx.api.sendMessage(
+            ownerTelegramId,
+            `📬 *New Feedback (${state.type.toUpperCase()})*\n\nFrom: ${ctx.from?.first_name || 'User'} (@${ctx.from?.username || 'NoUser'})\nID: \`${userId}\`\n\n${text}`,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: 'Reply', callback_data: `reply_feedback_${data.id}_${userId}` }],
+                  [{ text: 'Ignore', callback_data: `ignore_feedback_${data.id}` }]
+                ]
+              }
+            }
+          );
+        } catch {
+          // ignore
+        }
+      }
+
+      return;
+    }
+  }
+
+  if (userId && replyState.has(userId)) {
+    const state = replyState.get(userId);
+    if (state?.step === 'waiting_reply' && await isAdmin(userId.toString())) {
+      replyState.delete(userId);
+
+      try {
+        await ctx.api.sendMessage(
+          state.targetUserId,
+          `📬 *Response from Support:*\n\n${text}`,
+          { parse_mode: 'Markdown', protect_content: true }
+        );
+
+        await supabase
+          .from('feedback')
+          .update({ status: 'replied', owner_notes: text })
+          .eq('id', state.feedbackId);
+
+        await ctx.reply('✅ Reply sent.');
+      } catch {
+        await ctx.reply('❌ Could not send reply (user may have blocked the bot).');
+      }
+
+      return;
+    }
+  }
   
   // Handle menu buttons
   // Match simplified text or exact button text
@@ -915,6 +1044,10 @@ bot.on('callback_query', async (ctx) => {
 
   // Owner Reply
   if (data?.startsWith('reply_feedback_') && userId) {
+    if (!await isAdmin(userId.toString())) {
+      await ctx.answerCallbackQuery('Not allowed');
+      return;
+    }
     const parts = data.split('_');
     const feedbackId = parts[2];
     const targetUserId = parts[3];
@@ -927,10 +1060,23 @@ bot.on('callback_query', async (ctx) => {
 
   // Owner Ignore
   if (data?.startsWith('ignore_feedback_')) {
+    if (!userId || !await isAdmin(userId.toString())) {
+      await ctx.answerCallbackQuery('Not allowed');
+      return;
+    }
     const feedbackId = data.split('_')[2];
     await supabase.from('feedback').update({ status: 'ignored' }).eq('id', feedbackId);
     await ctx.answerCallbackQuery('Marked as ignored');
-    await ctx.editMessageText(ctx.callbackQuery.message?.text + '\n\n[IGNORED]');
+    try {
+      const messageText = (ctx.callbackQuery.message && 'text' in ctx.callbackQuery.message)
+        ? (ctx.callbackQuery.message.text || '')
+        : '';
+      if (messageText) {
+        await ctx.editMessageText(`${messageText}\n\n[IGNORED]`);
+      }
+    } catch {
+      // ignore
+    }
     return;
   }
   

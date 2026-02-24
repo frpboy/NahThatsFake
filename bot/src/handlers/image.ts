@@ -3,6 +3,7 @@ import { Context } from 'grammy';
 import { supabase } from '../supabase';
 import { consumeCredit } from '../utils/credits';
 import { detectDeepfake, checkImageCache, saveImageCache } from '../services/sightengine';
+import { getOrCreateUserByTelegram } from '../utils/user';
 import crypto from 'crypto';
 import axios from 'axios';
 
@@ -23,9 +24,11 @@ export async function processImageCheck(ctx: Context) {
       return;
     }
 
+    const dbUser = await getOrCreateUserByTelegram(user);
+
     // Check credits
-    const creditAvailable = await consumeCredit(telegramUserId, 'daily');
-    if (!creditAvailable) {
+    const creditSourceRaw = await consumeCredit(telegramUserId, 'daily');
+    if (!creditSourceRaw) {
       await ctx.reply(
 `🚫 *No credits left*
 
@@ -35,6 +38,8 @@ export async function processImageCheck(ctx: Context) {
       );
       return;
     }
+
+    const creditSource = creditSourceRaw === 'owner' ? 'premium' : creditSourceRaw;
 
     await ctx.reply('🔍 Analyzing image...');
 
@@ -76,14 +81,14 @@ export async function processImageCheck(ctx: Context) {
 
     // Record check
     await supabase.from('checks').insert({
-      user_id: telegramUserId,
+      user_id: dbUser.id,
       check_type: 'image',
       content_hash: imageHash,
       score: result.score,
       risk_level: result.risk_level,
       cached: result.cached,
       api_source: result.api_source,
-      credit_source: creditAvailable ? 'daily' : 'permanent'
+      credit_source: creditSource
     });
 
     // Send result
