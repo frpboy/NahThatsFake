@@ -1,9 +1,9 @@
 
 import { Context } from 'grammy';
 import { supabase } from '../supabase';
-import { consumeCredit } from '../utils/credits';
+import { checkCredits, consumeCredit } from '../utils/credits';
 import { checkUrlSafety } from '../services/urlscanner';
-import { getOrCreateUserByTelegram } from '../utils/user';
+import { getOrCreateUserByTelegram, getUserByTelegramId } from '../utils/user';
 import { config } from '../config';
 import crypto from 'crypto';
 
@@ -11,13 +11,21 @@ export async function processLinkCheck(ctx: Context) {
   const user = ctx.from;
   if (!user) return;
 
-  const telegramUserId = user.id.toString();
+  const actingTelegramUserId = (ctx as any).state?.actingTelegramUserId || user.id.toString();
+  const isImpersonating = Boolean((ctx as any).state?.isImpersonating);
   const text = ctx.message?.text;
   
   if (!text) return;
 
   try {
-    const dbUser = await getOrCreateUserByTelegram(user);
+    const dbUser = actingTelegramUserId === user.id.toString()
+      ? await getOrCreateUserByTelegram(user)
+      : await getUserByTelegramId(actingTelegramUserId);
+
+    if (!dbUser) {
+      await ctx.reply('❌ Target user not found.');
+      return;
+    }
 
     // Extract URL from text
     const urlMatch = text.match(/https?:\/\/[^\s]+/);
@@ -29,7 +37,21 @@ export async function processLinkCheck(ctx: Context) {
     const url = urlMatch[0];
     
     // Check credits
-    const creditSourceRaw = await consumeCredit(telegramUserId, 'daily');
+    if (isImpersonating) {
+      const credits = await checkCredits(actingTelegramUserId);
+      if (!credits.isPremium && credits.dailyRemaining <= 0 && credits.permanentCredits <= 0) {
+        await ctx.reply(
+`🚫 *No credits left*
+
+⭐ Upgrade to Premium for unlimited access
+🎁 Or use /refer to earn credits`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+    }
+
+    const creditSourceRaw = isImpersonating ? 'owner' : await consumeCredit(actingTelegramUserId, 'daily');
     if (!creditSourceRaw) {
       await ctx.reply(
 `🚫 *No credits left*
@@ -88,17 +110,18 @@ export async function processLinkCheck(ctx: Context) {
       });
     }
 
-    // Record the check
-    await supabase.from('checks').insert({
-      user_id: dbUser.id,
-      check_type: 'link',
-      content_hash: urlHash,
-      score: result.score,
-      risk_level: result.risk_level,
-      cached: result.cached,
-      api_source: result.api_source,
-      credit_source: creditSource
-    });
+    if (!isImpersonating) {
+      await supabase.from('checks').insert({
+        user_id: dbUser.id,
+        check_type: 'link',
+        content_hash: urlHash,
+        score: result.score,
+        risk_level: result.risk_level,
+        cached: result.cached,
+        api_source: result.api_source,
+        credit_source: creditSource
+      });
+    }
 
     // Send result
     const riskEmoji = result.risk_level === 'HIGH' ? '🔴' : result.risk_level === 'MEDIUM' ? '🟡' : '🟢';
@@ -108,7 +131,7 @@ export async function processLinkCheck(ctx: Context) {
     const { data: userRef } = await supabase
       .from('users')
       .select('referral_code')
-      .eq('telegram_user_id', telegramUserId)
+      .eq('telegram_user_id', actingTelegramUserId)
       .single();
 
     const refCode = userRef?.referral_code || '';

@@ -35,3 +35,11 @@ export async function getOrCreateUserByTelegram(telegramUser: {
   return created;
 }
 
+export async function getUserByTelegramId(telegramUserId: string) {
+  const { data } = await supabase
+    .from('users')
+    .select('*')
+    .eq('telegram_user_id', telegramUserId)
+    .maybeSingle();
+  return data;
+}

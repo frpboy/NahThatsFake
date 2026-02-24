@@ -27,8 +27,23 @@ export async function logAdminAction(
         .from('users')
         .select('id')
         .eq('telegram_user_id', targetUserId)
-        .single();
+        .maybeSingle();
       targetUserUuid = user?.id;
+    }
+
+    let targetGroupUuid = null;
+    if (targetGroupId) {
+      const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidLike.test(targetGroupId)) {
+        targetGroupUuid = targetGroupId;
+      } else {
+        const { data: group } = await supabase
+          .from('groups')
+          .select('id')
+          .eq('telegram_group_id', targetGroupId)
+          .maybeSingle();
+        targetGroupUuid = group?.id;
+      }
     }
 
     // Insert log
@@ -37,7 +52,7 @@ export async function logAdminAction(
       action,
       details,
       target_user_id: targetUserUuid,
-      target_group_id: targetGroupId // Assuming UUID for now
+      target_group_id: targetGroupUuid
     });
 
   } catch (error) {

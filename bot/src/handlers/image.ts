@@ -1,9 +1,9 @@
 
 import { Context } from 'grammy';
 import { supabase } from '../supabase';
-import { consumeCredit } from '../utils/credits';
+import { checkCredits, consumeCredit } from '../utils/credits';
 import { detectDeepfake, checkImageCache, saveImageCache } from '../services/sightengine';
-import { getOrCreateUserByTelegram } from '../utils/user';
+import { getOrCreateUserByTelegram, getUserByTelegramId } from '../utils/user';
 import crypto from 'crypto';
 import axios from 'axios';
 
@@ -11,7 +11,8 @@ export async function processImageCheck(ctx: Context) {
   const user = ctx.from;
   if (!user) return;
 
-  const telegramUserId = user.id.toString();
+  const actingTelegramUserId = (ctx as any).state?.actingTelegramUserId || user.id.toString();
+  const isImpersonating = Boolean((ctx as any).state?.isImpersonating);
   
   try {
     // Get image file ID
@@ -24,10 +25,31 @@ export async function processImageCheck(ctx: Context) {
       return;
     }
 
-    const dbUser = await getOrCreateUserByTelegram(user);
+    const dbUser = actingTelegramUserId === user.id.toString()
+      ? await getOrCreateUserByTelegram(user)
+      : await getUserByTelegramId(actingTelegramUserId);
+
+    if (!dbUser) {
+      await ctx.reply('❌ Target user not found.');
+      return;
+    }
 
     // Check credits
-    const creditSourceRaw = await consumeCredit(telegramUserId, 'daily');
+    if (isImpersonating) {
+      const credits = await checkCredits(actingTelegramUserId);
+      if (!credits.isPremium && credits.dailyRemaining <= 0 && credits.permanentCredits <= 0) {
+        await ctx.reply(
+`🚫 *No credits left*
+
+⭐ Upgrade to Premium for unlimited access
+🎁 Or use /refer to earn credits`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+    }
+
+    const creditSourceRaw = isImpersonating ? 'owner' : await consumeCredit(actingTelegramUserId, 'daily');
     if (!creditSourceRaw) {
       await ctx.reply(
 `🚫 *No credits left*
@@ -79,17 +101,18 @@ export async function processImageCheck(ctx: Context) {
       await saveImageCache(imageHash, result.score, result.risk_level, result.api_source);
     }
 
-    // Record check
-    await supabase.from('checks').insert({
-      user_id: dbUser.id,
-      check_type: 'image',
-      content_hash: imageHash,
-      score: result.score,
-      risk_level: result.risk_level,
-      cached: result.cached,
-      api_source: result.api_source,
-      credit_source: creditSource
-    });
+    if (!isImpersonating) {
+      await supabase.from('checks').insert({
+        user_id: dbUser.id,
+        check_type: 'image',
+        content_hash: imageHash,
+        score: result.score,
+        risk_level: result.risk_level,
+        cached: result.cached,
+        api_source: result.api_source,
+        credit_source: creditSource
+      });
+    }
 
     // Send result
     const riskEmoji = result.risk_level === 'HIGH' ? '🔴' : result.risk_level === 'MEDIUM' ? '🟡' : '🟢';
@@ -99,7 +122,7 @@ export async function processImageCheck(ctx: Context) {
     const { data: userRef } = await supabase
       .from('users')
       .select('referral_code')
-      .eq('telegram_user_id', telegramUserId)
+      .eq('telegram_user_id', actingTelegramUserId)
       .single();
     
     const refCode = userRef?.referral_code || '';

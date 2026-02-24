@@ -5,12 +5,13 @@ export interface UserCredits {
   dailyRemaining: number;
   permanentCredits: number;
   isPremium: boolean;
+  isOwner: boolean;
 }
 
 export async function checkCredits(telegramUserId: string): Promise<UserCredits> {
   const { data: user } = await supabase
     .from('users')
-    .select('daily_credits, permanent_credits, plan, premium_until')
+    .select('daily_credits, permanent_credits, plan, premium_until, role')
     .eq('telegram_user_id', telegramUserId)
     .single();
 
@@ -18,16 +19,19 @@ export async function checkCredits(telegramUserId: string): Promise<UserCredits>
     return {
       dailyRemaining: 0,
       permanentCredits: 0,
-      isPremium: false
+      isPremium: false,
+      isOwner: false
     };
   }
 
+  const isOwner = user.role === 'owner';
   const isPremium = user.plan !== 'free' && new Date(user.premium_until) > new Date();
 
   return {
     dailyRemaining: user.daily_credits,
     permanentCredits: user.permanent_credits,
-    isPremium
+    isPremium,
+    isOwner
   };
 }
 
@@ -35,20 +39,17 @@ export async function consumeCredit(
   telegramUserId: string,
   type: 'daily' | 'permanent'
 ): Promise<'daily' | 'permanent' | 'premium' | 'owner' | null> {
-  const OWNER_ID = process.env.OWNER_TELEGRAM_ID;
-
-  // 🔥 OWNER = unlimited
-  if (OWNER_ID && telegramUserId === OWNER_ID) {
-    return 'owner';
-  }
-
   const { data: user } = await supabase
     .from('users')
-    .select('daily_credits, permanent_credits, plan, premium_until')
+    .select('daily_credits, permanent_credits, plan, premium_until, role')
     .eq('telegram_user_id', telegramUserId)
     .single();
 
   if (!user) return null;
+
+  if (user.role === 'owner') {
+    return 'owner';
+  }
 
   // Premium users have unlimited checks
   if (user.plan !== 'free' && new Date(user.premium_until) > new Date()) {

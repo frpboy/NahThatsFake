@@ -12,8 +12,9 @@ import { isOwner, isAdmin, getRole } from './utils/roles';
 import { logAdminAction } from './utils/adminLogger';
 import { startScheduler } from './services/scheduler';
 import { fetchAdsGramAd } from './services/adsgram';
+import { checkAbuseAndEnforce } from './services/abuseEnforcement';
 import { config, validateConfig } from './config';
-import { getOrCreateUserByTelegram } from './utils/user';
+import { getOrCreateUserByTelegram, getUserByTelegramId } from './utils/user';
 
 // Validate environment variables
 validateConfig();
@@ -23,7 +24,6 @@ export const bot = new Bot(config.BOT_TOKEN);
 let cachedOwnerTelegramId: string | null = null;
 
 async function resolveOwnerTelegramId(): Promise<string | null> {
-  if (config.OWNER_TELEGRAM_ID) return config.OWNER_TELEGRAM_ID;
   if (cachedOwnerTelegramId) return cachedOwnerTelegramId;
 
   const { data } = await supabase
@@ -40,15 +40,21 @@ async function resolveOwnerTelegramId(): Promise<string | null> {
   return null;
 }
 
+function getActingTelegramUserId(ctx: Context): string {
+  const fromTelegramUserId = ctx.from?.id?.toString() || '';
+  return (ctx as any).state?.actingTelegramUserId || fromTelegramUserId;
+}
+
 async function sendSponsoredAd(ctx: Context) {
   if (!ctx.from) return;
+  const actingTelegramUserId = (ctx as any).state?.actingTelegramUserId || ctx.from.id.toString();
   if (!config.ADSGRAM_TOKEN || !config.ADSGRAM_BLOCK_ID) {
     await ctx.reply('Sponsored messages are not available right now.');
     return;
   }
 
   const ad = await fetchAdsGramAd({
-    tgid: ctx.from.id.toString(),
+    tgid: actingTelegramUserId,
     blockid: config.ADSGRAM_BLOCK_ID,
     language: config.ADSGRAM_LANGUAGE || ctx.from.language_code || 'en',
     token: config.ADSGRAM_TOKEN
@@ -81,6 +87,30 @@ async function sendSponsoredAd(ctx: Context) {
     reply_markup: { inline_keyboard },
     protect_content: true
   });
+}
+
+type ImpersonationSession = {
+  targetTelegramUserId: string;
+  targetUserUuid: string;
+  logId: string | null;
+  expiresAtMs: number;
+};
+
+const impersonationSessions = new Map<number, ImpersonationSession>();
+
+async function endImpersonation(ownerTelegramUserId: string, reason: string) {
+  const ownerIdNum = Number(ownerTelegramUserId);
+  const session = impersonationSessions.get(ownerIdNum);
+  if (!session) return;
+
+  impersonationSessions.delete(ownerIdNum);
+
+  if (session.logId) {
+    await supabase
+      .from('impersonation_logs')
+      .update({ ended_at: new Date().toISOString(), reason })
+      .eq('id', session.logId);
+  }
 }
 
 // Debug Middleware - Log all updates
@@ -146,6 +176,33 @@ bot.use(async (ctx, next) => {
       return;
     }
   }
+
+  await next();
+});
+
+bot.use(async (ctx, next) => {
+  const from = ctx.from;
+  if (!from) return next();
+
+  const fromTelegramUserId = from.id.toString();
+  let actingTelegramUserId = fromTelegramUserId;
+  let isImpersonating = false;
+
+  if (await isOwner(fromTelegramUserId)) {
+    const session = impersonationSessions.get(from.id);
+    if (session) {
+      if (Date.now() >= session.expiresAtMs) {
+        await endImpersonation(fromTelegramUserId, 'auto_expired');
+      } else {
+        actingTelegramUserId = session.targetTelegramUserId;
+        isImpersonating = true;
+      }
+    }
+  }
+
+  (ctx as any).state.actingTelegramUserId = actingTelegramUserId;
+  (ctx as any).state.isImpersonating = isImpersonating;
+  (ctx as any).state.realTelegramUserId = fromTelegramUserId;
 
   await next();
 });
@@ -297,7 +354,7 @@ bot.command('credits', async (ctx) => {
   const user = ctx.from;
   if (!user) return;
 
-  const credits = await checkCredits(user.id.toString());
+  const credits = await checkCredits(getActingTelegramUserId(ctx));
   
   await ctx.reply(`💳 *Your Credits*
 
@@ -319,21 +376,28 @@ bot.command('refer', async (ctx) => {
   const user = ctx.from;
   if (!user) return;
 
+  const actingTelegramUserId = getActingTelegramUserId(ctx);
+  const isImpersonating = Boolean((ctx as any).state?.isImpersonating);
+
   // Get or create referral code
   const { data } = await supabase
     .from('users')
     .select('referral_code')
-    .eq('telegram_user_id', user.id.toString())
+    .eq('telegram_user_id', actingTelegramUserId)
     .single();
 
   let referralCode = data?.referral_code;
   
   if (!referralCode) {
+    if (isImpersonating) {
+      await ctx.reply('Referral code is not set for this user. (Impersonation is read-only.)');
+      return;
+    }
     referralCode = generateReferralCode();
     await supabase
       .from('users')
       .update({ referral_code: referralCode })
-      .eq('telegram_user_id', user.id.toString());
+      .eq('telegram_user_id', actingTelegramUserId);
   }
 
   const botUsername = ctx.me.username;
@@ -377,7 +441,15 @@ bot.command('history', async (ctx) => {
   const user = ctx.from;
   if (!user) return;
 
-  const dbUser = await getOrCreateUserByTelegram(user);
+  const actingTelegramUserId = getActingTelegramUserId(ctx);
+  const dbUser = actingTelegramUserId === user.id.toString()
+    ? await getOrCreateUserByTelegram(user)
+    : await getUserByTelegramId(actingTelegramUserId);
+
+  if (!dbUser) {
+    await ctx.reply('❌ Target user not found.');
+    return;
+  }
 
   const { data: checks } = await supabase
     .from('checks')
@@ -445,9 +517,115 @@ bot.on('message:successful_payment', handleSuccessfulPayment);
 bot.command('whoami', async (ctx) => {
   if (!ctx.from) return;
   const role = await getRole(ctx.from.id.toString());
-  await ctx.reply(`🆔 ID: \`${ctx.from.id}\`\n🎭 Role: *${role.toUpperCase()}*`, {
-    parse_mode: 'Markdown'
-  });
+  const actingTelegramUserId = (ctx as any).state?.actingTelegramUserId || ctx.from.id.toString();
+  const isImpersonating = Boolean((ctx as any).state?.isImpersonating);
+
+  let actingLine = '';
+  if (isImpersonating) {
+    const { data: target } = await supabase
+      .from('users')
+      .select('username, first_name')
+      .eq('telegram_user_id', actingTelegramUserId)
+      .maybeSingle();
+
+    const label = target?.username ? `@${target.username}` : (target?.first_name || 'User');
+    actingLine = `\n🕵️ Acting as: *${label}* (ID: \`${actingTelegramUserId}\`)`;
+  }
+
+  await ctx.reply(`🆔 ID: \`${ctx.from.id}\`\n👑 Role: *${role.toUpperCase()}*${actingLine}`, { parse_mode: 'Markdown' });
+});
+
+bot.command('impersonate', async (ctx) => {
+  if (!ctx.from) return;
+  if (!await isOwner(ctx.from.id.toString())) return;
+
+  const raw = typeof ctx.match === 'string' ? ctx.match.trim() : '';
+  const [targetTelegramUserId, ...reasonParts] = raw.split(/\s+/).filter(Boolean);
+  const reason = reasonParts.join(' ') || 'debug';
+
+  if (!targetTelegramUserId || !/^\d{5,}$/.test(targetTelegramUserId)) {
+    await ctx.reply('Usage: /impersonate <telegram_user_id> [reason]');
+    return;
+  }
+
+  const { data: ownerRow } = await supabase
+    .from('users')
+    .select('id')
+    .eq('telegram_user_id', ctx.from.id.toString())
+    .maybeSingle();
+
+  const { data: targetUser } = await supabase
+    .from('users')
+    .select('id, telegram_user_id, username, first_name, is_banned, role')
+    .eq('telegram_user_id', targetTelegramUserId)
+    .maybeSingle();
+
+  if (!ownerRow) {
+    await ctx.reply('❌ Owner record missing in DB (role must be owner).');
+    return;
+  }
+
+  if (!targetUser) {
+    await ctx.reply('❌ Target user not found.');
+    return;
+  }
+
+  if (targetUser.role === 'owner') {
+    await ctx.reply('⛔ Cannot impersonate an owner.');
+    return;
+  }
+
+  if (targetUser.is_banned) {
+    await ctx.reply('⛔ Cannot impersonate a banned user.');
+    return;
+  }
+
+  const now = Date.now();
+  const session: ImpersonationSession = {
+    targetTelegramUserId: targetUser.telegram_user_id,
+    targetUserUuid: targetUser.id,
+    logId: null,
+    expiresAtMs: now + 30 * 60 * 1000
+  };
+
+  const { data: logRow } = await supabase
+    .from('impersonation_logs')
+    .insert({
+      owner_id: ownerRow.id,
+      target_user_id: targetUser.id,
+      reason
+    })
+    .select('id')
+    .single();
+
+  session.logId = logRow?.id || null;
+  impersonationSessions.set(ctx.from.id, session);
+
+  await logAdminAction(ctx.from.id.toString(), 'IMPERSONATE_START', { reason }, targetTelegramUserId);
+
+  const label = targetUser.username ? `@${targetUser.username}` : (targetUser.first_name || 'User');
+  await ctx.reply(`🕵️ *Impersonation started*
+
+You are now acting as:
+👤 ${label} (ID: \`${targetTelegramUserId}\`)
+
+This action is logged.
+Use /impersonate_off to exit.`, { parse_mode: 'Markdown' });
+});
+
+bot.command('impersonate_off', async (ctx) => {
+  if (!ctx.from) return;
+  if (!await isOwner(ctx.from.id.toString())) return;
+
+  const session = impersonationSessions.get(ctx.from.id);
+  if (!session) {
+    await ctx.reply('No active impersonation session.');
+    return;
+  }
+
+  await endImpersonation(ctx.from.id.toString(), 'manual_end');
+  await logAdminAction(ctx.from.id.toString(), 'IMPERSONATE_END', {}, session.targetTelegramUserId);
+  await ctx.reply('🛑 Impersonation ended. You are now back as Owner.');
 });
 
 // Command: /admin
@@ -626,6 +804,445 @@ bot.command('setplan', async (ctx) => {
 
   await logAdminAction(ctx.from.id.toString(), 'SET_PLAN', { planId, days }, userId);
   ctx.reply(`✅ Set plan ${planId} for user ${userId} for ${days} days.`);
+});
+
+bot.command('forcegroup', async (ctx) => {
+  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+
+  const args = ctx.message?.text.split(' ').filter(Boolean) || [];
+  if (args.length !== 4) {
+    await ctx.reply('Usage: /forcegroup <group_id> <plan> <days>');
+    return;
+  }
+
+  const groupId = args[1];
+  const plan = args[2];
+  const days = Number(args[3]);
+
+  if (!['grp_monthly', 'grp_annual', 'org_custom'].includes(plan)) {
+    await ctx.reply('Invalid plan. Allowed: grp_monthly, grp_annual, org_custom');
+    return;
+  }
+  if (!Number.isFinite(days) || days <= 0) {
+    await ctx.reply('Invalid days');
+    return;
+  }
+
+  const { data: ownerRow } = await supabase
+    .from('users')
+    .select('id')
+    .eq('telegram_user_id', ctx.from.id.toString())
+    .maybeSingle();
+
+  if (!ownerRow) {
+    await ctx.reply('❌ Owner record missing in DB.');
+    return;
+  }
+
+  const { data: existingGroup } = await supabase
+    .from('groups')
+    .select('id')
+    .eq('telegram_group_id', groupId)
+    .maybeSingle();
+
+  const premiumUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  const nowIso = new Date().toISOString();
+
+  if (!existingGroup) {
+    const { error } = await supabase.from('groups').insert({
+      telegram_group_id: groupId,
+      plan,
+      premium_until: premiumUntil,
+      premium_owner_id: ownerRow.id,
+      updated_at: nowIso
+    });
+
+    if (error) {
+      await ctx.reply('❌ Failed to create group record');
+      return;
+    }
+  } else {
+    const { error } = await supabase
+      .from('groups')
+      .update({
+        plan,
+        premium_until: premiumUntil,
+        premium_owner_id: ownerRow.id,
+        updated_at: nowIso
+      })
+      .eq('id', existingGroup.id);
+
+    if (error) {
+      await ctx.reply('❌ Failed to update group');
+      return;
+    }
+  }
+
+  await logAdminAction(ctx.from.id.toString(), 'FORCE_GROUP_PREMIUM', { plan, days, premiumUntil }, undefined, groupId);
+
+  const planName = plan === 'grp_monthly' ? 'Group Monthly' : plan === 'grp_annual' ? 'Group Annual' : 'Org Custom';
+  await ctx.reply(`✅ *Group Premium Activated*
+
+Group ID: \`${groupId}\`
+Plan: *${planName}*
+Valid until: *${new Date(premiumUntil).toLocaleDateString()}*
+
+This action is logged. This bypasses billing.`, { parse_mode: 'Markdown' });
+});
+
+bot.command('unforcegroup', async (ctx) => {
+  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+
+  const args = ctx.message?.text.split(' ').filter(Boolean) || [];
+  if (args.length !== 2) {
+    await ctx.reply('Usage: /unforcegroup <group_id>');
+    return;
+  }
+
+  const groupId = args[1];
+  const { error } = await supabase
+    .from('groups')
+    .update({ plan: 'free', premium_until: null, updated_at: new Date().toISOString() })
+    .eq('telegram_group_id', groupId);
+
+  if (error) {
+    await ctx.reply('❌ Failed to downgrade group');
+    return;
+  }
+
+  await logAdminAction(ctx.from.id.toString(), 'UNFORCE_GROUP', {}, undefined, groupId);
+  await ctx.reply('⚠️ Group downgraded to FREE\nPremium features disabled immediately.');
+});
+
+bot.command('refund', async (ctx) => {
+  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+
+  const raw = ctx.message?.text || '';
+  const parts = raw.split(' ').filter(Boolean);
+  if (parts.length < 3) {
+    await ctx.reply('Usage: /refund <payment_id> <reason>');
+    return;
+  }
+
+  const paymentId = parts[1];
+  const reason = parts.slice(2).join(' ');
+
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('id, user_id, plan_id, status, payment_id, premium_until, group_id')
+    .eq('id', paymentId)
+    .maybeSingle();
+
+  if (!payment) {
+    await ctx.reply('❌ Payment not found');
+    return;
+  }
+
+  if (payment.status !== 'success') {
+    await ctx.reply(`❌ Payment status is ${payment.status}. Only success can be refunded.`);
+    return;
+  }
+
+  const nowIso = new Date().toISOString();
+  await supabase
+    .from('payments')
+    .update({ status: 'refunded', notes: `Manual refund: ${reason}`, webhook_received_at: nowIso })
+    .eq('id', paymentId);
+
+  const { data: user } = await supabase
+    .from('users')
+    .select('plan, premium_until, last_payment_id, permanent_credits')
+    .eq('id', payment.user_id)
+    .maybeSingle();
+
+  const isCreditPack = /^credits_\d+$/i.test(payment.plan_id);
+  let revokeApplied = false;
+
+  if (user) {
+    if (isCreditPack) {
+      const m = payment.plan_id.match(/credits_(\d+)/i);
+      const credits = m ? Number(m[1]) : 0;
+      const newCredits = Math.max((user.permanent_credits || 0) - credits, 0);
+      await supabase
+        .from('users')
+        .update({ permanent_credits: newCredits, updated_at: nowIso })
+        .eq('id', payment.user_id);
+      revokeApplied = true;
+    } else {
+      const safeToRevoke = user.last_payment_id === payment.payment_id || (user.plan === payment.plan_id && String(user.premium_until || '') === String(payment.premium_until || ''));
+      if (safeToRevoke) {
+        await supabase
+          .from('users')
+          .update({ plan: 'free', premium_until: null, grace_until: null, updated_at: nowIso })
+          .eq('id', payment.user_id);
+        revokeApplied = true;
+      }
+    }
+  }
+
+  if (payment.group_id) {
+    await supabase
+      .from('groups')
+      .update({ plan: 'free', premium_until: null, payment_id: null, updated_at: nowIso })
+      .eq('id', payment.group_id);
+  }
+
+  await logAdminAction(ctx.from.id.toString(), 'REFUND_PAYMENT', { paymentId, reason, revokeApplied }, undefined, payment.group_id || undefined);
+
+  await ctx.reply(`💸 *Refund Processed*\n\nPayment ID: \`${paymentId}\`\nPlan: *${payment.plan_id}*\nAccess revoked: *${revokeApplied ? 'YES' : 'NO (newer entitlement detected)'}*\n\nThis action is logged.`, { parse_mode: 'Markdown' });
+});
+
+bot.command('simulate_abuse', async (ctx) => {
+  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+
+  const args = ctx.message?.text.split(' ').filter(Boolean) || [];
+  if (args.length !== 4) {
+    await ctx.reply('Usage: /simulate_abuse <telegram_user_id> <type> <count>');
+    return;
+  }
+
+  const targetTelegramUserId = args[1];
+  const type = args[2];
+  const count = Number(args[3]);
+
+  if (!Number.isFinite(count) || count <= 0 || count > 200) {
+    await ctx.reply('Invalid count (1..200)');
+    return;
+  }
+
+  const { data: target } = await supabase
+    .from('users')
+    .select('id, username, first_name, role')
+    .eq('telegram_user_id', targetTelegramUserId)
+    .maybeSingle();
+
+  if (!target) {
+    await ctx.reply('❌ Target user not found');
+    return;
+  }
+  if (target.role === 'owner') {
+    await ctx.reply('⛔ Cannot simulate abuse on an owner');
+    return;
+  }
+
+  const rows = Array.from({ length: count }).map(() => ({
+    user_id: target.id,
+    flag_type: type,
+    details: { simulated: true },
+    auto_action: 'pending',
+    is_simulated: true
+  }));
+
+  await supabase.from('abuse_flags').insert(rows);
+  await checkAbuseAndEnforce(target.id);
+
+  const { data: after } = await supabase
+    .from('users')
+    .select('is_throttled, is_banned')
+    .eq('id', target.id)
+    .maybeSingle();
+
+  await logAdminAction(ctx.from.id.toString(), 'SIMULATE_ABUSE', { type, count }, targetTelegramUserId);
+
+  const label = target.username ? `@${target.username}` : (target.first_name || 'User');
+  await ctx.reply(`🧪 *Abuse Simulation Complete*\n\nUser: *${label}*\nInjected: *${type} × ${count}*\n\nResult:\n• Throttled: *${after?.is_throttled ? 'YES' : 'NO'}*\n• Temp/Hard Ban: *${after?.is_banned ? 'YES' : 'NO'}*\n\n⚠️ Marked as SIMULATED\nThis action is logged.`, { parse_mode: 'Markdown' });
+});
+
+bot.command('simulate_abuse_reset', async (ctx) => {
+  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+
+  const args = ctx.message?.text.split(' ').filter(Boolean) || [];
+  if (args.length !== 2) {
+    await ctx.reply('Usage: /simulate_abuse_reset <telegram_user_id>');
+    return;
+  }
+
+  const targetTelegramUserId = args[1];
+  const { data: target } = await supabase
+    .from('users')
+    .select('id, role')
+    .eq('telegram_user_id', targetTelegramUserId)
+    .maybeSingle();
+
+  if (!target) {
+    await ctx.reply('❌ Target user not found');
+    return;
+  }
+  if (target.role === 'owner') {
+    await ctx.reply('⛔ Cannot reset on an owner');
+    return;
+  }
+
+  await supabase
+    .from('abuse_flags')
+    .delete()
+    .eq('user_id', target.id)
+    .eq('is_simulated', true);
+
+  await supabase
+    .from('users')
+    .update({ is_throttled: false, throttled_until: null, is_banned: false, banned_until: null, banned_reason: null, updated_at: new Date().toISOString() })
+    .eq('id', target.id)
+    .ilike('banned_reason', 'Automated:%');
+
+  await logAdminAction(ctx.from.id.toString(), 'SIMULATE_ABUSE_RESET', {}, targetTelegramUserId);
+  await ctx.reply('✅ Simulated abuse flags cleared.');
+});
+
+bot.command('timeline', async (ctx) => {
+  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+
+  const args = ctx.message?.text.split(' ').filter(Boolean) || [];
+  if (args.length < 2) {
+    await ctx.reply('Usage: /timeline <telegram_user_id>');
+    return;
+  }
+
+  const targetTelegramUserId = args[1];
+  const { data: target } = await supabase
+    .from('users')
+    .select('id, username, first_name, created_at')
+    .eq('telegram_user_id', targetTelegramUserId)
+    .maybeSingle();
+
+  if (!target) {
+    await ctx.reply('❌ User not found');
+    return;
+  }
+
+  const [payments, checks, abuse, logs, groups] = await Promise.all([
+    supabase.from('payments').select('plan_id, status, created_at').eq('user_id', target.id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('checks').select('check_type, risk_level, created_at').eq('user_id', target.id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('abuse_flags').select('flag_type, is_simulated, created_at').eq('user_id', target.id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('admin_logs').select('action, created_at').eq('target_user_id', target.id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('groups').select('telegram_group_id, plan, updated_at').eq('admin_user_id', target.id).order('updated_at', { ascending: false }).limit(5)
+  ]);
+
+  const events: Array<{ ts: string; text: string }> = [];
+  events.push({ ts: target.created_at, text: 'Account created' });
+
+  (payments.data || []).forEach(p => events.push({ ts: p.created_at, text: `Payment: ${p.plan_id} (${p.status})` }));
+  (checks.data || []).forEach(c => events.push({ ts: c.created_at, text: `Check: ${c.check_type} ${c.risk_level || ''}`.trim() }));
+  (abuse.data || []).forEach(a => events.push({ ts: a.created_at, text: `Abuse flag: ${a.flag_type}${a.is_simulated ? ' (SIMULATED)' : ''}` }));
+  (logs.data || []).forEach(l => events.push({ ts: l.created_at, text: `Admin: ${l.action}` }));
+  (groups.data || []).forEach(g => events.push({ ts: g.updated_at, text: `Group: ${g.telegram_group_id} plan=${g.plan}` }));
+
+  events.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+  const top = events.slice(0, 20);
+  const label = target.username ? `@${target.username}` : (target.first_name || 'User');
+  const lines = top.map(e => `• ${new Date(e.ts).toLocaleDateString()} — ${e.text}`).join('\n');
+
+  await ctx.reply(`📜 *User Timeline — ${label}*\n\n${lines}`, { parse_mode: 'Markdown' });
+});
+
+bot.command('groupmap', async (ctx) => {
+  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+
+  const mode = (typeof ctx.match === 'string' ? ctx.match.trim() : '').toLowerCase();
+  let query = supabase.from('group_heatmap').select('telegram_group_id, group_name, plan, total_checks, high_risk_pct, abuse_flags');
+
+  if (mode === 'premium') {
+    query = query.in('plan', ['grp_monthly', 'grp_annual', 'org_custom']).order('total_checks', { ascending: false });
+  } else {
+    query = query.order('high_risk_pct', { ascending: false }).order('abuse_flags', { ascending: false });
+  }
+
+  const { data } = await query.limit(10);
+  if (!data || data.length === 0) {
+    await ctx.reply('No group data yet.');
+    return;
+  }
+
+  const rows = data.map((g: any, i: number) => {
+    const name = g.group_name ? ` | ${g.group_name}` : '';
+    const plan = String(g.plan || 'free').toUpperCase();
+    return `${i + 1}️⃣ ${g.telegram_group_id}${name} | ${g.high_risk_pct}% HIGH | ${g.abuse_flags} flags | ${plan}`;
+  }).join('\n');
+
+  await ctx.reply(`🔥 *Group Heatmap*\n\n${rows}`, { parse_mode: 'Markdown' });
+});
+
+async function setFeatureFlag(key: string, scope: 'global' | 'user' | 'group', scopeId: string | null, enabled: boolean, description?: string) {
+  const { data: existing } = await supabase
+    .from('feature_flags')
+    .select('id')
+    .eq('key', key)
+    .eq('scope', scope)
+    .eq('scope_id', scopeId)
+    .maybeSingle();
+
+  if (existing?.id) {
+    await supabase
+      .from('feature_flags')
+      .update({ enabled, description, updated_at: new Date().toISOString() })
+      .eq('id', existing.id);
+    return;
+  }
+
+  await supabase
+    .from('feature_flags')
+    .insert({ key, scope, scope_id: scopeId, enabled, description, updated_at: new Date().toISOString() });
+}
+
+bot.command('flag', async (ctx) => {
+  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+
+  const args = ctx.message?.text.split(' ').filter(Boolean) || [];
+  if (args.length < 2) {
+    await ctx.reply('Usage: /flag list | /flag on <key> | /flag off <key> | /flag user <key> <user_id> on|off | /flag group <key> <group_id> on|off');
+    return;
+  }
+
+  const sub = args[1];
+  if (sub === 'list') {
+    const { data } = await supabase
+      .from('feature_flags')
+      .select('key, enabled, scope, scope_id')
+      .order('key', { ascending: true })
+      .order('scope', { ascending: true });
+
+    if (!data || data.length === 0) {
+      await ctx.reply('No flags set.');
+      return;
+    }
+
+    const lines = data.map((f: any) => {
+      const target = f.scope === 'global' ? 'GLOBAL' : `${String(f.scope).toUpperCase()}:${f.scope_id}`;
+      return `• ${f.key} | ${target} | ${f.enabled ? 'ON' : 'OFF'}`;
+    }).join('\n');
+
+    await ctx.reply(`🚩 *Feature Flags*\n\n${lines}`, { parse_mode: 'Markdown' });
+    return;
+  }
+
+  if (sub === 'on' || sub === 'off') {
+    const key = args[2];
+    if (!key) {
+      await ctx.reply('Usage: /flag on <key>');
+      return;
+    }
+    const enabled = sub === 'on';
+    await setFeatureFlag(key, 'global', null, enabled);
+    await logAdminAction(ctx.from.id.toString(), 'FEATURE_FLAG_UPDATE', { key, enabled, scope: 'global' });
+    await ctx.reply(`🚩 Feature Flag Updated\n\nFlag: ${key}\nScope: GLOBAL\nStatus: ${enabled ? 'ENABLED' : 'DISABLED'}\n\nThis action is logged.`);
+    return;
+  }
+
+  if (sub === 'user' || sub === 'group') {
+    if (args.length !== 5) {
+      await ctx.reply(`Usage: /flag ${sub} <key> <id> on|off`);
+      return;
+    }
+    const key = args[2];
+    const id = args[3];
+    const enabled = args[4] === 'on';
+    await setFeatureFlag(key, sub as any, id, enabled);
+    await logAdminAction(ctx.from.id.toString(), 'FEATURE_FLAG_UPDATE', { key, enabled, scope: sub, scope_id: id }, undefined, sub === 'group' ? id : undefined);
+    await ctx.reply(`🚩 Feature Flag Updated\n\nFlag: ${key}\nScope: ${sub.toUpperCase()}\nTarget: ${id}\nStatus: ${enabled ? 'ENABLED' : 'DISABLED'}\n\nThis action is logged.`);
+    return;
+  }
+
+  await ctx.reply('Unknown /flag command');
 });
 
 // Broadcast State
@@ -924,7 +1541,7 @@ bot.on('message:text', async (ctx) => {
     // Trigger /credits logic
     const user = ctx.from;
     if (user) {
-      const credits = await checkCredits(user.id.toString());
+      const credits = await checkCredits(getActingTelegramUserId(ctx));
       await ctx.reply(`💳 *Your Credits*
 
 Daily remaining: ${credits.dailyRemaining}/3
