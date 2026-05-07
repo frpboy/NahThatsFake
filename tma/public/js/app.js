@@ -325,10 +325,25 @@ function viewCheckDetails(checkId) {
 }
 
 // Load more checks
-function loadMoreChecks() {
+async function loadMoreChecks() {
     hapticFeedback('light');
-    currentPage++;
-    loadChecks();
+    const btn = document.getElementById('load-more-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
+        btn.innerHTML = '⏳ Loading...';
+    }
+
+    try {
+        currentPage++;
+        await loadChecks();
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.removeAttribute('aria-busy');
+            btn.innerHTML = 'Load More';
+        }
+    }
 }
 
 // Share referral link
