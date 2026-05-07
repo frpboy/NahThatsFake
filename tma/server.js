@@ -94,9 +94,28 @@ app.get('/api/health', (req, res) => {
 app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
   try {
     // Check if user is admin
-    if (req.telegramUser) {
-        // In a real app, verify admin status from DB using req.telegramUser.id
-        // For now, we trust the DB lookup below or environment
+    if (!req.telegramUser) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const userId = req.telegramUser.id.toString();
+
+    // Check environment owner first
+    let isAdmin = userId === process.env.OWNER_TELEGRAM_ID;
+
+    // If not owner, check DB role
+    if (!isAdmin) {
+      const { data: userRole } = await supabase
+        .from('users')
+        .select('role')
+        .eq('telegram_user_id', userId)
+        .single();
+
+      isAdmin = userRole && (userRole.role === 'owner' || userRole.role === 'admin');
+    }
+
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Forbidden: Admin access required' });
     }
     
     const { data: users, error: usersError } = await supabase.from('users').select('id, is_banned');
@@ -223,11 +242,16 @@ function getPlanDetails(planId) {
 
 // 1. Create Razorpay Order
 app.post('/api/payment/create-razorpay-order', async (req, res) => {
-  const { userId, planId, amount } = req.body;
+  const { userId, planId } = req.body;
   
   try {
+    const planDetails = getPlanDetails(planId);
+    if (!planDetails) {
+      return res.status(400).json({ error: 'Invalid plan' });
+    }
+
     const options = {
-      amount: amount, // amount in the smallest currency unit (paise)
+      amount: planDetails.amount, // amount in the smallest currency unit (paise)
       currency: "INR",
       receipt: `receipt_${userId}_${Date.now()}`,
       notes: {
@@ -317,7 +341,7 @@ app.post('/api/payment/verify-razorpay', async (req, res) => {
 
 // 3. Create Stars Invoice (Proxy to Bot)
 app.post('/api/payment/create-stars-invoice', async (req, res) => {
-  const { userId, planId, amount } = req.body;
+  const { userId, planId } = req.body;
   const BOT_TOKEN = process.env.BOT_TOKEN;
 
   if (!BOT_TOKEN) {
@@ -327,13 +351,18 @@ app.post('/api/payment/create-stars-invoice', async (req, res) => {
   try {
     let title = 'Premium';
     let description = 'Subscription';
+    let expectedAmount = 0;
     
-    if (planId === 'ind_weekly') { title = 'Weekly Pass'; description = '7 Days Premium'; }
-    if (planId === 'ind_monthly') { title = 'Monthly Premium'; description = '30 Days Premium'; }
-    if (planId === 'ind_annual') { title = 'Annual Premium'; description = '365 Days Premium'; }
-    if (planId === 'credits_50') { title = '50 Credits'; description = '50 Permanent Checks'; }
-    if (planId === 'credits_100') { title = '100 Credits'; description = '100 Permanent Checks'; }
+    if (planId === 'ind_weekly') { title = 'Weekly Pass'; description = '7 Days Premium'; expectedAmount = 150; }
+    if (planId === 'ind_monthly') { title = 'Monthly Premium'; description = '30 Days Premium'; expectedAmount = 500; }
+    if (planId === 'ind_annual') { title = 'Annual Premium'; description = '365 Days Premium'; expectedAmount = 4000; }
+    if (planId === 'credits_50') { title = '50 Credits'; description = '50 Permanent Checks'; expectedAmount = 250; }
+    if (planId === 'credits_100') { title = '100 Credits'; description = '100 Permanent Checks'; expectedAmount = 450; }
     
+    if (expectedAmount === 0) {
+      return res.status(400).json({ error: 'Invalid plan' });
+    }
+
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -343,7 +372,7 @@ app.post('/api/payment/create-stars-invoice', async (req, res) => {
         payload: JSON.stringify({ userId, planId, type: 'stars' }), 
         provider_token: "", // Empty for Stars
         currency: "XTR",
-        prices: [{ label: title, amount: amount }] // amount in Stars
+        prices: [{ label: title, amount: expectedAmount }] // amount in Stars
       })
     });
 
