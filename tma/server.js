@@ -209,12 +209,12 @@ app.get('/api/user/checks', validateTelegramData, async (req, res) => {
 // Plan Details Helper
 function getPlanDetails(planId) {
   const plans = {
-    'ind_weekly': { amount: 2900, days: 7, is_credit: false },
-    'ind_monthly': { amount: 9900, days: 30, is_credit: false },
-    'ind_annual': { amount: 79900, days: 365, is_credit: false },
+    'ind_weekly': { amount: 2900, amountStars: 150, days: 7, is_credit: false },
+    'ind_monthly': { amount: 9900, amountStars: 500, days: 30, is_credit: false },
+    'ind_annual': { amount: 79900, amountStars: 4000, days: 365, is_credit: false },
     'ind_lifetime': { amount: 199900, days: 36500, is_credit: false },
-    'credits_50': { amount: 4900, credits: 50, is_credit: true },
-    'credits_100': { amount: 8900, credits: 100, is_credit: true },
+    'credits_50': { amount: 4900, amountStars: 250, credits: 50, is_credit: true },
+    'credits_100': { amount: 8900, amountStars: 450, credits: 100, is_credit: true },
     'grp_monthly': { amount: 29900, days: 30, is_credit: false },
     'grp_annual': { amount: 299900, days: 365, is_credit: false }
   };
@@ -223,11 +223,16 @@ function getPlanDetails(planId) {
 
 // 1. Create Razorpay Order
 app.post('/api/payment/create-razorpay-order', async (req, res) => {
-  const { userId, planId, amount } = req.body;
+  const { userId, planId } = req.body;
   
+  const planDetails = getPlanDetails(planId);
+  if (!planDetails || !planDetails.amount) {
+    return res.status(400).json({ error: 'Invalid plan or amount not found' });
+  }
+
   try {
     const options = {
-      amount: amount, // amount in the smallest currency unit (paise)
+      amount: planDetails.amount, // amount in the smallest currency unit (paise)
       currency: "INR",
       receipt: `receipt_${userId}_${Date.now()}`,
       notes: {
@@ -317,11 +322,16 @@ app.post('/api/payment/verify-razorpay', async (req, res) => {
 
 // 3. Create Stars Invoice (Proxy to Bot)
 app.post('/api/payment/create-stars-invoice', async (req, res) => {
-  const { userId, planId, amount } = req.body;
+  const { userId, planId } = req.body;
   const BOT_TOKEN = process.env.BOT_TOKEN;
 
   if (!BOT_TOKEN) {
     return res.status(500).json({ error: 'Bot token not configured' });
+  }
+
+  const planDetails = getPlanDetails(planId);
+  if (!planDetails || !planDetails.amountStars) {
+    return res.status(400).json({ error: 'Invalid plan or star amount not configured' });
   }
 
   try {
@@ -343,7 +353,7 @@ app.post('/api/payment/create-stars-invoice', async (req, res) => {
         payload: JSON.stringify({ userId, planId, type: 'stars' }), 
         provider_token: "", // Empty for Stars
         currency: "XTR",
-        prices: [{ label: title, amount: amount }] // amount in Stars
+        prices: [{ label: title, amount: planDetails.amountStars }] // amount in Stars
       })
     });
 
