@@ -131,8 +131,26 @@ h4 {
 .check-item {
     display: flex;
     align-items: center;
-    padding: 12px 0;
+    padding: 12px;
+    margin: 0 -12px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, outline 0.2s ease;
+}
+
+.check-item:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+.check-item:focus-visible {
+    outline: 2px solid var(--tg-theme-button-color);
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+.dark .check-item:hover,
+.dark .check-item:focus-visible {
+    background-color: rgba(255, 255, 255, 0.05);
 }
 
 .check-item:last-child {

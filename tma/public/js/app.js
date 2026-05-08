@@ -296,11 +296,18 @@ function renderChecks() {
         const scorePercent = check.score ? Math.round(check.score * 100) : 0;
         const date = new Date(check.created_at).toLocaleDateString();
 
+        const checkTypeName = check.check_type === 'image' ? 'Image Analysis' : 'Link Analysis';
+
         return `
-            <div class="check-item" onclick="viewCheckDetails('${check.id}')">
+            <div class="check-item"
+                 role="button"
+                 tabindex="0"
+                 aria-label="View details for ${checkTypeName} on ${date}"
+                 onclick="viewCheckDetails('${check.id}')"
+                 onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); viewCheckDetails('${check.id}'); }">
                 <div class="check-icon ${check.check_type}">${icon}</div>
                 <div class="check-details">
-                    <div class="check-type">${check.check_type === 'image' ? 'Image Analysis' : 'Link Analysis'}</div>
+                    <div class="check-type">${checkTypeName}</div>
                     <div class="check-date">${date}</div>
                 </div>
                 <div class="check-result">
