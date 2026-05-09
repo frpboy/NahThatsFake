@@ -297,7 +297,7 @@ function renderChecks() {
         const date = new Date(check.created_at).toLocaleDateString();
 
         return `
-            <div class="check-item" onclick="viewCheckDetails('${check.id}')">
+            <div class="check-item" role="button" tabindex="0" onclick="viewCheckDetails('${check.id}')" onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); viewCheckDetails('${check.id}'); }">
                 <div class="check-icon ${check.check_type}">${icon}</div>
                 <div class="check-details">
                     <div class="check-type">${check.check_type === 'image' ? 'Image Analysis' : 'Link Analysis'}</div>
