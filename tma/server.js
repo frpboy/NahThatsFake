@@ -129,7 +129,7 @@ app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
 // User Profile Endpoint
 app.get('/api/user/profile', validateTelegramData, async (req, res) => {
   // Prefer validated user ID from middleware, fallback to query for dev/legacy
-  const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
+  const userId = req.telegramUser ? req.telegramUser.id : null;
   
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
@@ -157,7 +157,7 @@ app.get('/api/user/profile', validateTelegramData, async (req, res) => {
 
 // User Role Endpoint
 app.get('/api/user/role', validateTelegramData, async (req, res) => {
-    const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
+    const userId = req.telegramUser ? req.telegramUser.id : null;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
     try {
@@ -181,7 +181,7 @@ app.get('/api/user/role', validateTelegramData, async (req, res) => {
 
 // User Checks Endpoint
 app.get('/api/user/checks', validateTelegramData, async (req, res) => {
-    const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
+    const userId = req.telegramUser ? req.telegramUser.id : null;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
     try {
