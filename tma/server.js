@@ -117,23 +117,29 @@ app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
     if (!isAdmin) {
       return res.status(403).json({ error: 'Forbidden: Admin access required' });
     }
-    
-    const { data: users, error: usersError } = await supabase.from('users').select('id, is_banned');
-    const { data: checks, error: checksError } = await supabase.from('checks').select('id');
-    const { data: revenue, error: revenueError } = await supabase.rpc('get_revenue_stats'); // Need to create RPC or view query
-    
-    // For now, manual query for revenue
-    const { data: payments } = await supabase.from('payments').select('amount_inr, amount_stars, status').eq('status', 'success');
+
+    // ⚡ Bolt: Fetch DB-level counts concurrently instead of pulling all rows into memory
+    const [
+      { count: usersCount, error: usersError },
+      { count: bannedCount, error: bannedError },
+      { count: checksCount, error: checksError },
+      { data: payments, error: paymentsError }
+    ] = await Promise.all([
+      supabase.from('users').select('*', { count: 'exact', head: true }),
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('is_banned', true),
+      supabase.from('checks').select('*', { count: 'exact', head: true }),
+      supabase.from('payments').select('amount_inr, amount_stars').eq('status', 'success')
+    ]);
     
     const revenueInr = payments?.reduce((acc, curr) => acc + (curr.amount_inr || 0), 0) / 100 || 0;
     const revenueStars = payments?.reduce((acc, curr) => acc + (curr.amount_stars || 0), 0) || 0;
 
-    if (usersError || checksError) throw new Error('Database error');
+    if (usersError || bannedError || checksError || paymentsError) throw new Error('Database error');
 
     res.json({
-      users: users.length,
-      banned: users.filter(u => u.is_banned).length,
-      checks: checks.length,
+      users: usersCount || 0,
+      banned: bannedCount || 0,
+      checks: checksCount || 0,
       revenue: {
         inr: revenueInr,
         stars: revenueStars
@@ -148,7 +154,7 @@ app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
 // User Profile Endpoint
 app.get('/api/user/profile', validateTelegramData, async (req, res) => {
   // Prefer validated user ID from middleware, fallback to query for dev/legacy
-  const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
+  const userId = req.telegramUser ? req.telegramUser.id : null;
   
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
@@ -176,7 +182,7 @@ app.get('/api/user/profile', validateTelegramData, async (req, res) => {
 
 // User Role Endpoint
 app.get('/api/user/role', validateTelegramData, async (req, res) => {
-    const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
+    const userId = req.telegramUser ? req.telegramUser.id : null;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
     try {
@@ -200,7 +206,7 @@ app.get('/api/user/role', validateTelegramData, async (req, res) => {
 
 // User Checks Endpoint
 app.get('/api/user/checks', validateTelegramData, async (req, res) => {
-    const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
+    const userId = req.telegramUser ? req.telegramUser.id : null;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
     try {

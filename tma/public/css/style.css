@@ -133,6 +133,13 @@ h4 {
     align-items: center;
     padding: 12px 0;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+}
+
+.check-item:focus-visible {
+    outline: 2px solid var(--tg-theme-button-color);
+    outline-offset: 2px;
+    border-radius: 8px;
 }
 
 .check-item:last-child {
@@ -231,9 +238,19 @@ h4 {
     gap: 8px;
 }
 
-.button:active {
+.button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.button:not(:disabled):active {
     transform: scale(0.98);
     opacity: 0.9;
+}
+
+.button:focus-visible {
+    outline: 2px solid var(--tg-theme-button-color);
+    outline-offset: 2px;
 }
 
 .button-secondary {
