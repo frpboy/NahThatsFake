@@ -228,8 +228,10 @@ function getPlanDetails(planId) {
 }
 
 // 1. Create Razorpay Order
-app.post('/api/payment/create-razorpay-order', async (req, res) => {
-  const { userId, planId, amount } = req.body;
+app.post('/api/payment/create-razorpay-order', validateTelegramData, async (req, res) => {
+  const { planId, amount } = req.body;
+  const userId = req.telegramUser ? req.telegramUser.id : null;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
   try {
     const options = {
@@ -258,8 +260,10 @@ app.post('/api/payment/create-razorpay-order', async (req, res) => {
 });
 
 // 2. Verify Razorpay Payment
-app.post('/api/payment/verify-razorpay', async (req, res) => {
-  const { userId, planId, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) => {
+  const { planId, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+  const userId = req.telegramUser ? req.telegramUser.id : null;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
   const generated_signature = crypto
     .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
@@ -322,8 +326,10 @@ app.post('/api/payment/verify-razorpay', async (req, res) => {
 });
 
 // 3. Create Stars Invoice (Proxy to Bot)
-app.post('/api/payment/create-stars-invoice', async (req, res) => {
-  const { userId, planId, amount } = req.body;
+app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, res) => {
+  const { planId, amount } = req.body;
+  const userId = req.telegramUser ? req.telegramUser.id : null;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
   const BOT_TOKEN = process.env.BOT_TOKEN;
 
   if (!BOT_TOKEN) {
