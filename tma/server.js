@@ -93,12 +93,22 @@ app.get('/api/health', (req, res) => {
 // Admin Stats Endpoint (Protected)
 app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
   try {
-    // Check if user is admin
-    if (req.telegramUser) {
-        // In a real app, verify admin status from DB using req.telegramUser.id
-        // For now, we trust the DB lookup below or environment
+    const userId = req.telegramUser ? req.telegramUser.id : null;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    // 🛡️ Sentinel: Ensure only owners and admins can access stats
+    if (userId.toString() !== process.env.OWNER_TELEGRAM_ID) {
+      const { data: user } = await supabase
+        .from('users')
+        .select('role')
+        .eq('telegram_user_id', userId.toString())
+        .single();
+
+      if (!user || (user.role !== 'admin' && user.role !== 'owner')) {
+        return res.status(403).json({ error: 'Forbidden: Admin access required' });
+      }
     }
-    
+
     // ⚡ Bolt: Fetch DB-level counts concurrently instead of pulling all rows into memory
     const [
       { count: usersCount, error: usersError },
