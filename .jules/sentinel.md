@@ -1,4 +1,4 @@
-## 2024-05-09 - Fix IDOR in user endpoints
-**Vulnerability:** Insecure Direct Object Reference (IDOR) via `req.query.userId` fallback. Authenticated endpoints allowed accessing other users' data by providing a `userId` query parameter if the `telegramUser` context was somehow bypassed or when Telegram verification was skipped in development logic.
-**Learning:** Even with an authentication middleware, relying on query or body parameters instead of the securely extracted token/header data can create critical access control vulnerabilities.
-**Prevention:** Strictly rely on the validated user identity attached by the authentication middleware (`req.telegramUser.id`). Never allow fallbacks to user-provided data for identity verification on protected endpoints.
+## 2024-05-18 - IDOR in Payment Endpoints
+**Vulnerability:** The payment endpoints `/api/payment/create-razorpay-order`, `/api/payment/verify-razorpay`, and `/api/payment/create-stars-invoice` trusted the `userId` provided in the JSON body (`req.body.userId`) instead of verifying the authenticated user.
+**Learning:** Even if the frontend passes the correct `userId`, the backend must never trust client-provided IDs for sensitive operations. It must extract the `userId` from the authenticated session/token (in this case, via the `validateTelegramData` middleware and `req.telegramUser.id`).
+**Prevention:** Always apply the authentication middleware (`validateTelegramData`) to sensitive endpoints and strictly use `req.telegramUser.id` for any database or payment actions linked to a user account.
