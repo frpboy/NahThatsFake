@@ -149,10 +149,23 @@
         const user = tg.initDataUnsafe?.user;
         const userId = user ? user.id : null;
 
+        function setPaymentProcessing(isProcessing) {
+            const buttons = document.querySelectorAll('.btn');
+            buttons.forEach(btn => {
+                btn.disabled = isProcessing;
+                if (isProcessing) {
+                    btn.setAttribute('aria-busy', 'true');
+                } else {
+                    btn.removeAttribute('aria-busy');
+                }
+            });
+        }
+
         // 1. Telegram Stars Payment
         function payStars(planId, amount) {
             if (!userId) return alert("Please open from Telegram");
             
+            setPaymentProcessing(true);
             setStatus("Creating Stars invoice...", false);
             
             fetch('/api/payment/create-stars-invoice', {
@@ -167,6 +180,7 @@
             .then(data => {
                 if (data.invoiceLink) {
                     tg.openInvoice(data.invoiceLink, (status) => {
+                        setPaymentProcessing(false);
                         if (status === 'paid') {
                             setStatus("🎉 Payment successful!", false);
                             setTimeout(() => tg.close(), 2000);
@@ -175,16 +189,21 @@
                         }
                     });
                 } else {
+                    setPaymentProcessing(false);
                     setStatus("Failed to create invoice.", true);
                 }
             })
-            .catch(e => setStatus("Error: " + e.message, true));
+            .catch(e => {
+                setPaymentProcessing(false);
+                setStatus("Error: " + e.message, true);
+            });
         }
 
         // 2. Razorpay Payment
         function payRazorpay(planId, amountPaise) {
             if (!userId) return alert("Please open from Telegram");
             
+            setPaymentProcessing(true);
             setStatus("Creating Razorpay order...", false);
 
             fetch('/api/payment/create-razorpay-order', {
@@ -209,6 +228,12 @@
                     handler: function (response) {
                         verifyRazorpay(response, planId);
                     },
+                    modal: {
+                        ondismiss: function() {
+                            setPaymentProcessing(false);
+                            setStatus("Payment cancelled.", true);
+                        }
+                    },
                     prefill: {
                         name: user.first_name,
                         contact: "" 
@@ -220,14 +245,19 @@
                 
                 const rzp1 = new Razorpay(options);
                 rzp1.on('payment.failed', function (response){
+                    setPaymentProcessing(false);
                     setStatus("Payment Failed: " + response.error.description, true);
                 });
                 rzp1.open();
             })
-            .catch(e => setStatus("Error: " + e.message, true));
+            .catch(e => {
+                setPaymentProcessing(false);
+                setStatus("Error: " + e.message, true);
+            });
         }
 
         function verifyRazorpay(response, planId) {
+            setPaymentProcessing(true);
             setStatus("Verifying payment...", false);
             
             fetch('/api/payment/verify-razorpay', {
@@ -246,6 +276,7 @@
             })
             .then(r => r.json())
             .then(data => {
+                setPaymentProcessing(false);
                 if (data.success) {
                     setStatus("🎉 Payment successful!", false);
                     setTimeout(() => tg.close(), 2000);
@@ -253,13 +284,18 @@
                     setStatus("Verification failed. Contact support.", true);
                 }
             })
-            .catch(e => setStatus("Error verifying: " + e.message, true));
+            .catch(e => {
+                setPaymentProcessing(false);
+                setStatus("Error verifying: " + e.message, true);
+            });
         }
 
         function setStatus(msg, isError) {
             const el = document.getElementById('status-message');
             el.innerText = msg;
             el.className = isError ? "error" : "status";
+            el.setAttribute('role', isError ? 'alert' : 'status');
+            el.setAttribute('aria-live', isError ? 'assertive' : 'polite');
             el.style.display = 'block';
         }
     </script>
