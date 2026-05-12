@@ -9,23 +9,26 @@ const ABUSE_THRESHOLDS = {
 };
 
 export async function checkAbuseAndEnforce(userId: string) {
-  // Get user's abuse flags
-  const { data: flags } = await supabase
-    .from('abuse_flags')
-    .select('*')
-    .eq('user_id', userId);
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  if (!flags || flags.length === 0) return;
-
-  const totalFlags = flags.length;
+  // ⚡ Get total count first to avoid unnecessary queries for non-abusers (the vast majority)
+  const { count: totalCount } = await supabase.from('abuse_flags').select('*', { count: 'exact', head: true }).eq('user_id', userId);
   
-  // Count flags in last 24h
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const flagsToday = flags.filter(f => new Date(f.created_at) > oneDayAgo).length;
+  const totalFlags = totalCount || 0;
+  if (totalFlags === 0) return;
 
-  // Count flags in last 7 days
-  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const flagsThisWeek = flags.filter(f => new Date(f.created_at) > oneWeekAgo).length;
+  // ⚡ Only if they have flags, query the time-based counts directly from DB to prevent memory bottlenecks
+  const [
+    { count: todayCount },
+    { count: weekCount }
+  ] = await Promise.all([
+    supabase.from('abuse_flags').select('*', { count: 'exact', head: true }).eq('user_id', userId).gt('created_at', oneDayAgo),
+    supabase.from('abuse_flags').select('*', { count: 'exact', head: true }).eq('user_id', userId).gt('created_at', oneWeekAgo)
+  ]);
+
+  const flagsToday = todayCount || 0;
+  const flagsThisWeek = weekCount || 0;
 
   let actionTaken = null;
   let reason = '';
