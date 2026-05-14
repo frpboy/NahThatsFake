@@ -654,18 +654,19 @@ bot.command('admin', async (ctx) => {
 bot.command('stats', async (ctx) => {
   if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
 
-  const { count: users } = await supabase
-    .from('users')
-    .select('*', { count: 'exact', head: true });
-
-  const { count: checks } = await supabase
-    .from('checks')
-    .select('*', { count: 'exact', head: true });
+  // ⚡ Bolt: Run independent counting queries concurrently to reduce network latency
+  const [
+    { count: users },
+    { count: checks }
+  ] = await Promise.all([
+    supabase.from('users').select('*', { count: 'exact', head: true }),
+    supabase.from('checks').select('*', { count: 'exact', head: true })
+  ]);
 
   await ctx.reply(`📊 *Platform Stats*
 
-👥 Users: ${users}
-🔍 Total Checks: ${checks}`, {
+👥 Users: ${users || 0}
+🔍 Total Checks: ${checks || 0}`, {
     parse_mode: 'Markdown'
   });
 });
