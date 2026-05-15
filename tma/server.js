@@ -28,6 +28,8 @@ const razorpay = new Razorpay({
 });
 
 // Telegram Init Data Validation Middleware
+let cachedSecretKey = null;
+
 const validateTelegramData = (req, res, next) => {
   const initData = req.header('X-Telegram-Init-Data');
   
@@ -57,13 +59,17 @@ const validateTelegramData = (req, res, next) => {
   
   const dataCheckString = params.sort().join('\n');
   
-  const secretKey = crypto
-    .createHmac('sha256', 'WebAppData')
-    .update(process.env.BOT_TOKEN)
-    .digest();
-    
+  // ⚡ Bolt: Cache the expensive HMAC computation of the static BOT_TOKEN
+  // to avoid redundant cryptographic operations on every single API request.
+  if (!cachedSecretKey && process.env.BOT_TOKEN) {
+    cachedSecretKey = crypto
+      .createHmac('sha256', 'WebAppData')
+      .update(process.env.BOT_TOKEN)
+      .digest();
+  }
+
   const calculatedHash = crypto
-    .createHmac('sha256', secretKey)
+    .createHmac('sha256', cachedSecretKey || 'fallback')
     .update(dataCheckString)
     .digest('hex');
     
