@@ -231,27 +231,30 @@ app.get('/api/user/checks', validateTelegramData, async (req, res) => {
 // Plan Details Helper
 function getPlanDetails(planId) {
   const plans = {
-    'ind_weekly': { amount: 2900, days: 7, is_credit: false },
-    'ind_monthly': { amount: 9900, days: 30, is_credit: false },
-    'ind_annual': { amount: 79900, days: 365, is_credit: false },
-    'ind_lifetime': { amount: 199900, days: 36500, is_credit: false },
-    'credits_50': { amount: 4900, credits: 50, is_credit: true },
-    'credits_100': { amount: 8900, credits: 100, is_credit: true },
-    'grp_monthly': { amount: 29900, days: 30, is_credit: false },
-    'grp_annual': { amount: 299900, days: 365, is_credit: false }
+    'ind_weekly': { amount: 2900, stars: 150, days: 7, is_credit: false },
+    'ind_monthly': { amount: 9900, stars: 500, days: 30, is_credit: false },
+    'ind_annual': { amount: 79900, stars: 4000, days: 365, is_credit: false },
+    'ind_lifetime': { amount: 199900, stars: 10000, days: 36500, is_credit: false }, // assuming stars
+    'credits_50': { amount: 4900, stars: 250, credits: 50, is_credit: true },
+    'credits_100': { amount: 8900, stars: 450, credits: 100, is_credit: true },
+    'grp_monthly': { amount: 29900, stars: 1500, days: 30, is_credit: false }, // assuming stars
+    'grp_annual': { amount: 299900, stars: 15000, days: 365, is_credit: false } // assuming stars
   };
   return plans[planId];
 }
 
 // 1. Create Razorpay Order
 app.post('/api/payment/create-razorpay-order', validateTelegramData, async (req, res) => {
-  const { planId, amount } = req.body;
+  const { planId } = req.body;
   const userId = req.telegramUser ? req.telegramUser.id : null;
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
+  const planDetails = getPlanDetails(planId);
+  if (!planDetails) return res.status(400).json({ error: 'Invalid plan' });
+
   try {
     const options = {
-      amount: amount, // amount in the smallest currency unit (paise)
+      amount: planDetails.amount, // amount in the smallest currency unit (paise)
       currency: "INR",
       receipt: `receipt_${userId}_${Date.now()}`,
       notes: {
@@ -343,11 +346,14 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
 
 // 3. Create Stars Invoice (Proxy to Bot)
 app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, res) => {
-  const { planId, amount } = req.body;
+  const { planId } = req.body;
   const userId = req.telegramUser ? req.telegramUser.id : null;
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
-  const BOT_TOKEN = process.env.BOT_TOKEN;
 
+  const planDetails = getPlanDetails(planId);
+  if (!planDetails || !planDetails.stars) return res.status(400).json({ error: 'Invalid plan or stars pricing' });
+
+  const BOT_TOKEN = process.env.BOT_TOKEN;
   if (!BOT_TOKEN) {
     return res.status(500).json({ error: 'Bot token not configured' });
   }
@@ -371,7 +377,7 @@ app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, 
         payload: JSON.stringify({ userId, planId, type: 'stars' }), 
         provider_token: "", // Empty for Stars
         currency: "XTR",
-        prices: [{ label: title, amount: amount }] // amount in Stars
+        prices: [{ label: title, amount: planDetails.stars }] // amount in Stars authoritatively
       })
     });
 
