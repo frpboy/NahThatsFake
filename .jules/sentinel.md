@@ -1,9 +1,5 @@
-## 2024-05-18 - Authorization Bypass in Admin Stats Endpoint
-**Vulnerability:** The `/api/admin/stats` endpoint lacked role verification, allowing any authenticated user to access sensitive admin-level statistics (user count, banned count, checks count, and revenue data).
-**Learning:** Authentication (validating who the user is) does not equal authorization (validating what the user is allowed to do). Even with `validateTelegramData` ensuring the user was authenticated via Telegram, the endpoint failed to verify if that user had admin privileges.
-**Prevention:** For any endpoint serving sensitive data or administrative functions, explicitly check the user's role (e.g., against `process.env.OWNER_TELEGRAM_ID` or a database role column) in addition to basic authentication. Return a 403 Forbidden status if the user lacks the required role.
+## 2024-11-20 - [CRITICAL] Fix price manipulation vulnerability in TMA backend
 
-## 2024-05-18 - IDOR in Payment Endpoints
-**Vulnerability:** The payment endpoints `/api/payment/create-razorpay-order`, `/api/payment/verify-razorpay`, and `/api/payment/create-stars-invoice` trusted the `userId` provided in the JSON body (`req.body.userId`) instead of verifying the authenticated user.
-**Learning:** Even if the frontend passes the correct `userId`, the backend must never trust client-provided IDs for sensitive operations. It must extract the `userId` from the authenticated session/token (in this case, via the `validateTelegramData` middleware and `req.telegramUser.id`).
-**Prevention:** Always apply the authentication middleware (`validateTelegramData`) to sensitive endpoints and strictly use `req.telegramUser.id` for any database or payment actions linked to a user account.
+**Vulnerability:** IDOR / Price Manipulation in payment endpoints. `req.body.amount` was fully trusted for both `/api/payment/create-razorpay-order` and `/api/payment/create-stars-invoice` without server-side validation.
+**Learning:** Payment details, particularly pricing and amounts, cannot be trusted when sourced from the client. The client can intercept the request and change the `amount` field, allowing them to purchase any plan for any arbitrary price (e.g., 1 INR or 1 Star).
+**Prevention:** Always maintain an authoritative configuration of prices on the server (like `getPlanDetails`) and only accept the identifier (e.g. `planId`) from the client. Look up the required amounts securely on the backend before creating invoices or orders.
