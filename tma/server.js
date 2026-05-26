@@ -231,14 +231,14 @@ app.get('/api/user/checks', validateTelegramData, async (req, res) => {
 // Plan Details Helper
 function getPlanDetails(planId) {
   const plans = {
-    'ind_weekly': { amount: 2900, days: 7, is_credit: false },
-    'ind_monthly': { amount: 9900, days: 30, is_credit: false },
-    'ind_annual': { amount: 79900, days: 365, is_credit: false },
-    'ind_lifetime': { amount: 199900, days: 36500, is_credit: false },
-    'credits_50': { amount: 4900, credits: 50, is_credit: true },
-    'credits_100': { amount: 8900, credits: 100, is_credit: true },
-    'grp_monthly': { amount: 29900, days: 30, is_credit: false },
-    'grp_annual': { amount: 299900, days: 365, is_credit: false }
+    'ind_weekly': { amount: 2900, stars: 150, days: 7, is_credit: false },
+    'ind_monthly': { amount: 9900, stars: 500, days: 30, is_credit: false },
+    'ind_annual': { amount: 79900, stars: 4000, days: 365, is_credit: false },
+    'ind_lifetime': { amount: 199900, stars: 10000, days: 36500, is_credit: false },
+    'credits_50': { amount: 4900, stars: 250, credits: 50, is_credit: true },
+    'credits_100': { amount: 8900, stars: 450, credits: 100, is_credit: true },
+    'grp_monthly': { amount: 29900, stars: 1500, days: 30, is_credit: false },
+    'grp_annual': { amount: 299900, stars: 15000, days: 365, is_credit: false }
   };
   return plans[planId];
 }
@@ -251,7 +251,7 @@ app.post('/api/payment/create-razorpay-order', validateTelegramData, async (req,
   
   try {
     const options = {
-      amount: amount, // amount in the smallest currency unit (paise)
+      amount: amount,
       currency: "INR",
       receipt: `receipt_${userId}_${Date.now()}`,
       notes: {
@@ -260,6 +260,9 @@ app.post('/api/payment/create-razorpay-order', validateTelegramData, async (req,
       }
     };
     
+    const planDetails = getPlanDetails(planId);
+    if (!planDetails) return res.status(400).json({ error: 'Invalid planId' });
+    options.amount = planDetails.amount; // 🛡️ Sentinel: Enforce server-side pricing
     const order = await razorpay.orders.create(options);
     
     // Return order details + key_id for frontend
@@ -362,6 +365,9 @@ app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, 
     if (planId === 'credits_50') { title = '50 Credits'; description = '50 Permanent Checks'; }
     if (planId === 'credits_100') { title = '100 Credits'; description = '100 Permanent Checks'; }
     
+    const planDetails = getPlanDetails(planId);
+    if (!planDetails || !planDetails.stars) return res.status(400).json({ error: 'Invalid planId or stars pricing not available' });
+
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -371,7 +377,7 @@ app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, 
         payload: JSON.stringify({ userId, planId, type: 'stars' }), 
         provider_token: "", // Empty for Stars
         currency: "XTR",
-        prices: [{ label: title, amount: amount }] // amount in Stars
+        prices: [{ label: title, amount: planDetails.stars }] // 🛡️ Sentinel: Enforce server-side pricing
       })
     });
 
