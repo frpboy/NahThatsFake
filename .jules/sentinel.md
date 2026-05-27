@@ -7,3 +7,8 @@
 **Vulnerability:** The payment endpoints `/api/payment/create-razorpay-order`, `/api/payment/verify-razorpay`, and `/api/payment/create-stars-invoice` trusted the `userId` provided in the JSON body (`req.body.userId`) instead of verifying the authenticated user.
 **Learning:** Even if the frontend passes the correct `userId`, the backend must never trust client-provided IDs for sensitive operations. It must extract the `userId` from the authenticated session/token (in this case, via the `validateTelegramData` middleware and `req.telegramUser.id`).
 **Prevention:** Always apply the authentication middleware (`validateTelegramData`) to sensitive endpoints and strictly use `req.telegramUser.id` for any database or payment actions linked to a user account.
+
+## 2024-05-24 - [Critical] Price Manipulation in Payment Endpoints
+**Vulnerability:** The Razorpay order and Telegram Stars invoice creation endpoints blindly trusted the `req.body.amount` provided by the client, allowing malicious users to arbitrarily alter the cost of subscriptions or credits (e.g., purchasing a ₹799 plan for ₹1).
+**Learning:** Payment endpoints must never trust client-provided assertions for pricing, quantities, or roles, as this leads to Insecure Direct Object Reference (IDOR) and business logic exploitation.
+**Prevention:** Always perform authoritative server-side lookups for item prices (e.g., using a `getPlanDetails` helper that explicitly maps items to their correct prices) before proceeding with transaction creation.
