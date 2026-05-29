@@ -9,23 +9,33 @@ const ABUSE_THRESHOLDS = {
 };
 
 export async function checkAbuseAndEnforce(userId: string) {
-  // Get user's abuse flags
-  const { data: flags } = await supabase
+  // First, get total count to potentially return early
+  const { count: totalFlags } = await supabase
     .from('abuse_flags')
-    .select('*')
+    .select('*', { count: 'exact', head: true })
     .eq('user_id', userId);
 
-  if (!flags || flags.length === 0) return;
+  if (totalFlags === null || totalFlags === 0) return;
 
-  const totalFlags = flags.length;
-  
-  // Count flags in last 24h
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const flagsToday = flags.filter(f => new Date(f.created_at) > oneDayAgo).length;
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Count flags in last 7 days
-  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const flagsThisWeek = flags.filter(f => new Date(f.created_at) > oneWeekAgo).length;
+  // Run subsequent time-windowed count queries in parallel
+  const [
+    { count: flagsToday },
+    { count: flagsThisWeek }
+  ] = await Promise.all([
+    supabase
+      .from('abuse_flags')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gt('created_at', oneDayAgo),
+    supabase
+      .from('abuse_flags')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gt('created_at', oneWeekAgo)
+  ]);
 
   let actionTaken = null;
   let reason = '';
@@ -40,7 +50,11 @@ export async function checkAbuseAndEnforce(userId: string) {
   if (!user || user.is_banned) return; // Already banned
 
   // Check thresholds
-  if (totalFlags >= ABUSE_THRESHOLDS.HARD_BAN) {
+  const total = totalFlags;
+  const today = flagsToday ?? 0;
+  const thisWeek = flagsThisWeek ?? 0;
+
+  if (total >= ABUSE_THRESHOLDS.HARD_BAN) {
     // Hard Ban
     await supabase.from('users').update({
       is_banned: true,
@@ -49,9 +63,9 @@ export async function checkAbuseAndEnforce(userId: string) {
     }).eq('id', userId);
     
     actionTaken = 'HARD_BAN';
-    reason = `Total flags: ${totalFlags}`;
+    reason = `Total flags: ${total}`;
 
-  } else if (flagsThisWeek >= ABUSE_THRESHOLDS.TEMP_BAN) {
+  } else if (thisWeek >= ABUSE_THRESHOLDS.TEMP_BAN) {
     // Temp Ban (7 days)
     const bannedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     
@@ -63,9 +77,9 @@ export async function checkAbuseAndEnforce(userId: string) {
     }).eq('id', userId);
 
     actionTaken = 'TEMP_BAN';
-    reason = `Weekly flags: ${flagsThisWeek}`;
+    reason = `Weekly flags: ${thisWeek}`;
 
-  } else if (flagsToday >= ABUSE_THRESHOLDS.THROTTLE) {
+  } else if (today >= ABUSE_THRESHOLDS.THROTTLE) {
     // Throttle (24 hours)
     const throttledUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
@@ -75,7 +89,7 @@ export async function checkAbuseAndEnforce(userId: string) {
     }).eq('id', userId);
     
     actionTaken = 'THROTTLE';
-    reason = `Daily flags: ${flagsToday}`;
+    reason = `Daily flags: ${today}`;
   }
 
   if (actionTaken) {
@@ -92,7 +106,7 @@ export async function checkAbuseAndEnforce(userId: string) {
       await supabase.from('admin_logs').insert({
         admin_id: admin.id,
         action: `AUTO_${actionTaken}`,
-        details: { reason, totalFlags, flagsToday, flagsThisWeek },
+        details: { reason, totalFlags: total, flagsToday: today, flagsThisWeek: thisWeek },
         target_user_id: userId
       });
     }
