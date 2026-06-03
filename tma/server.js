@@ -256,13 +256,16 @@ function getPlanDetails(planId) {
 
 // 1. Create Razorpay Order
 app.post('/api/payment/create-razorpay-order', validateTelegramData, async (req, res) => {
-  const { planId, amount } = req.body;
+  const { planId } = req.body;
   const userId = req.telegramUser ? req.telegramUser.id : null;
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
+  const planDetails = getPlanDetails(planId);
+  if (!planDetails) return res.status(400).json({ error: 'Invalid plan' });
+
   try {
     const options = {
-      amount: amount, // amount in the smallest currency unit (paise)
+      amount: planDetails.amount, // derive amount from trusted server-side config
       currency: "INR",
       receipt: `receipt_${userId}_${Date.now()}`,
       notes: {
@@ -354,7 +357,7 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
 
 // 3. Create Stars Invoice (Proxy to Bot)
 app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, res) => {
-  const { planId, amount } = req.body;
+  const { planId } = req.body;
   const userId = req.telegramUser ? req.telegramUser.id : null;
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
   const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -362,6 +365,17 @@ app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, 
   if (!BOT_TOKEN) {
     return res.status(500).json({ error: 'Bot token not configured' });
   }
+
+  const starsAmountMap = {
+    'ind_weekly': 150,
+    'ind_monthly': 500,
+    'ind_annual': 4000,
+    'credits_50': 250,
+    'credits_100': 450
+  };
+
+  const amount = starsAmountMap[planId];
+  if (!amount) return res.status(400).json({ error: 'Invalid plan' });
 
   try {
     let title = 'Premium';
@@ -382,7 +396,7 @@ app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, 
         payload: JSON.stringify({ userId, planId, type: 'stars' }), 
         provider_token: "", // Empty for Stars
         currency: "XTR",
-        prices: [{ label: title, amount: amount }] // amount in Stars
+        prices: [{ label: title, amount: amount }] // derive amount from trusted mapping
       })
     });
 
