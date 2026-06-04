@@ -12,3 +12,8 @@
 **Vulnerability:** The `/api/payment/create-razorpay-order` and `/api/payment/create-stars-invoice` endpoints blindly trusted the `amount` field provided by the client in the request body to create payment orders/invoices. An attacker could bypass subscriptions or modify prices by intercepting the request and sending a lower amount.
 **Learning:** Never trust client-provided financial data (e.g., prices, amounts) in backend requests, especially for payment creation. Clients can easily manipulate JSON payloads.
 **Prevention:** Derive the required amount for an order/invoice directly from a trusted server-side source or configuration mapping based on the `planId` requested. Use mappings (like `starsAmountMap`) and helper functions (like `getPlanDetails()`) to validate the `planId` and fetch the accurate price.
+
+## 2024-06-25 - Timing Attack in HMAC Signature Verification
+**Vulnerability:** The application used simple string comparison (`===`) to verify cryptographic HMAC signatures in Telegram data validation and Razorpay webhook/payment verification (`calculatedHash === hash`, `generated_signature === razorpay_signature`, `digest === signature`).
+**Learning:** Simple string comparison operators in JavaScript perform character-by-character checks and return early as soon as a mismatch is found. The time it takes to return false reveals how many characters matched. Attackers can exploit this small time difference (a timing attack) to guess the expected signature character by character.
+**Prevention:** Always use a constant-time comparison function, such as `crypto.timingSafeEqual(bufA, bufB)`, when comparing sensitive cryptographic hashes or signatures to prevent attackers from using timing measurements to forge valid signatures.
