@@ -38,6 +38,13 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
+// 🛡️ Sentinel: Securely compare signatures to prevent timing attacks
+const secureCompare = (a, b) => {
+  const bufA = Buffer.from(String(a || ''));
+  const bufB = Buffer.from(String(b || ''));
+  return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+};
+
 // Telegram Init Data Validation Middleware
 let cachedSecretKey = null;
 
@@ -84,7 +91,7 @@ const validateTelegramData = (req, res, next) => {
     .update(dataCheckString)
     .digest('hex');
     
-  if (calculatedHash === hash) {
+  if (secureCompare(calculatedHash, hash)) {
     // Valid data
     // Parse user data to attach to req
     const userStr = urlParams.get('user');
@@ -300,7 +307,7 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
     .update(razorpay_order_id + "|" + razorpay_payment_id)
     .digest('hex');
 
-  if (generated_signature === razorpay_signature) {
+  if (secureCompare(generated_signature, razorpay_signature)) {
     // Payment verified
     try {
       // Find user UUID from telegram ID
@@ -429,7 +436,7 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
   // If testing, log both for debugging (remove in production)
   // console.log('Webhook Debug:', { digest, signature, secret: !!secret });
 
-  if (digest === signature) {
+  if (secureCompare(digest, signature)) {
     // Verified
     const event = req.body.event;
     const payload = req.body.payload;
