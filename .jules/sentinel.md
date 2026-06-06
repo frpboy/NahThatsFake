@@ -12,3 +12,7 @@
 **Vulnerability:** The `/api/payment/create-razorpay-order` and `/api/payment/create-stars-invoice` endpoints blindly trusted the `amount` field provided by the client in the request body to create payment orders/invoices. An attacker could bypass subscriptions or modify prices by intercepting the request and sending a lower amount.
 **Learning:** Never trust client-provided financial data (e.g., prices, amounts) in backend requests, especially for payment creation. Clients can easily manipulate JSON payloads.
 **Prevention:** Derive the required amount for an order/invoice directly from a trusted server-side source or configuration mapping based on the `planId` requested. Use mappings (like `starsAmountMap`) and helper functions (like `getPlanDetails()`) to validate the `planId` and fetch the accurate price.
+## 2026-06-06 - Prevent Timing Attacks on HMAC Signatures
+**Vulnerability:** Insecure HMAC signature comparison using strict equality (`===`) instead of a timing-safe method in `tma/server.js`.
+**Learning:** Comparing HMAC signatures byte-by-byte with `===` leaks information about the signature based on the time it takes to return false, allowing an attacker to guess the correct signature (timing attack).
+**Prevention:** Always use `crypto.timingSafeEqual` after converting strings to Buffers of matching length when comparing cryptographic signatures or hashes.
