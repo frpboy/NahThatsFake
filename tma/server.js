@@ -7,6 +7,15 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 require('dotenv').config();
 
+// Utility for timing-safe string comparison
+function secureCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufferA = Buffer.from(a);
+  const bufferB = Buffer.from(b);
+  if (bufferA.length !== bufferB.length) return false;
+  return crypto.timingSafeEqual(bufferA, bufferB);
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -84,7 +93,7 @@ const validateTelegramData = (req, res, next) => {
     .update(dataCheckString)
     .digest('hex');
     
-  if (calculatedHash === hash) {
+  if (secureCompare(calculatedHash, hash)) {
     // Valid data
     // Parse user data to attach to req
     const userStr = urlParams.get('user');
@@ -300,7 +309,7 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
     .update(razorpay_order_id + "|" + razorpay_payment_id)
     .digest('hex');
 
-  if (generated_signature === razorpay_signature) {
+  if (secureCompare(generated_signature, razorpay_signature)) {
     // Payment verified
     try {
       // Find user UUID from telegram ID
@@ -429,7 +438,7 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
   // If testing, log both for debugging (remove in production)
   // console.log('Webhook Debug:', { digest, signature, secret: !!secret });
 
-  if (digest === signature) {
+  if (secureCompare(digest, signature)) {
     // Verified
     const event = req.body.event;
     const payload = req.body.payload;
