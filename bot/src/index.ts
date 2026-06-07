@@ -128,19 +128,36 @@ startScheduler();
 // Middleware
 bot.use(rateLimitMiddleware);
 
+// Global State Cache Middleware (⚡ Bolt)
+bot.use(async (ctx, next) => {
+  const from = ctx.from;
+  if (!from) return next();
+
+  (ctx as any).state = (ctx as any).state || {};
+
+  const { data } = await supabase
+    .from('users')
+    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until')
+    .eq('telegram_user_id', from.id.toString())
+    .maybeSingle();
+
+  if (data) {
+    (ctx as any).state.userRole = data.role;
+    (ctx as any).state.userData = data;
+  }
+
+  await next();
+});
+
 // Global Ban Check Middleware
 bot.use(async (ctx, next) => {
   const user = ctx.from;
   if (!user) return next();
 
   // Bypass for admins/owners
-  if (await isAdmin(user.id.toString())) return next();
+  if (await isAdmin(user.id.toString(), (ctx as any).state?.userRole)) return next();
 
-  const { data } = await supabase
-    .from('users')
-    .select('is_banned, banned_reason, banned_until, is_throttled, throttled_until')
-    .eq('telegram_user_id', user.id.toString())
-    .single();
+  const data = (ctx as any).state?.userData;
 
   const now = new Date();
 
@@ -188,7 +205,7 @@ bot.use(async (ctx, next) => {
   let actingTelegramUserId = fromTelegramUserId;
   let isImpersonating = false;
 
-  if (await isOwner(fromTelegramUserId)) {
+  if (await isOwner(fromTelegramUserId, (ctx as any).state?.userRole)) {
     const session = impersonationSessions.get(from.id);
     if (session) {
       if (Date.now() >= session.expiresAtMs) {
@@ -516,7 +533,7 @@ bot.on('message:successful_payment', handleSuccessfulPayment);
 // Command: /whoami
 bot.command('whoami', async (ctx) => {
   if (!ctx.from) return;
-  const role = await getRole(ctx.from.id.toString());
+  const role = await getRole(ctx.from.id.toString(), (ctx as any).state?.userRole);
   const actingTelegramUserId = (ctx as any).state?.actingTelegramUserId || ctx.from.id.toString();
   const isImpersonating = Boolean((ctx as any).state?.isImpersonating);
 
@@ -537,7 +554,7 @@ bot.command('whoami', async (ctx) => {
 
 bot.command('impersonate', async (ctx) => {
   if (!ctx.from) return;
-  if (!await isOwner(ctx.from.id.toString())) return;
+  if (!await isOwner(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const raw = typeof ctx.match === 'string' ? ctx.match.trim() : '';
   const [targetTelegramUserId, ...reasonParts] = raw.split(/\s+/).filter(Boolean);
@@ -615,7 +632,7 @@ Use /impersonate_off to exit.`, { parse_mode: 'Markdown' });
 
 bot.command('impersonate_off', async (ctx) => {
   if (!ctx.from) return;
-  if (!await isOwner(ctx.from.id.toString())) return;
+  if (!await isOwner(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const session = impersonationSessions.get(ctx.from.id);
   if (!session) {
@@ -632,7 +649,7 @@ bot.command('impersonate_off', async (ctx) => {
 bot.command('admin', async (ctx) => {
   if (!ctx.from) return;
 
-  if (!await isAdmin(ctx.from.id.toString())) {
+  if (!await isAdmin(ctx.from.id.toString(), (ctx as any).state?.userRole)) {
     return ctx.reply('⛔ Access denied');
   }
 
@@ -652,7 +669,7 @@ bot.command('admin', async (ctx) => {
 
 // Command: /stats
 bot.command('stats', async (ctx) => {
-  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const { count: users } = await supabase
     .from('users')
@@ -672,7 +689,7 @@ bot.command('stats', async (ctx) => {
 
 // Command: /ban <id> <reason>
 bot.command('ban', async (ctx) => {
-  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const args = ctx.message?.text.split(' ');
   if (!args || args.length < 2) {
@@ -701,7 +718,7 @@ bot.command('ban', async (ctx) => {
 
 // Command: /unban <id>
 bot.command('unban', async (ctx) => {
-  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const args = ctx.message?.text.split(' ');
   if (!args || args.length !== 2) {
@@ -729,7 +746,7 @@ bot.command('unban', async (ctx) => {
 
 // Command: /givecredits <id> <amount>
 bot.command('givecredits', async (ctx) => {
-  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const args = ctx.message?.text.split(' ');
   if (!args || args.length !== 3) {
@@ -771,7 +788,7 @@ bot.command('givecredits', async (ctx) => {
 
 // Command: /setplan <id> <plan> <days>
 bot.command('setplan', async (ctx) => {
-  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const args = ctx.message?.text.split(' ');
   if (!args || args.length !== 4) {
@@ -807,7 +824,7 @@ bot.command('setplan', async (ctx) => {
 });
 
 bot.command('forcegroup', async (ctx) => {
-  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isOwner(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const args = ctx.message?.text.split(' ').filter(Boolean) || [];
   if (args.length !== 4) {
@@ -891,7 +908,7 @@ This action is logged. This bypasses billing.`, { parse_mode: 'Markdown' });
 });
 
 bot.command('unforcegroup', async (ctx) => {
-  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isOwner(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const args = ctx.message?.text.split(' ').filter(Boolean) || [];
   if (args.length !== 2) {
@@ -915,7 +932,7 @@ bot.command('unforcegroup', async (ctx) => {
 });
 
 bot.command('refund', async (ctx) => {
-  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isOwner(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const raw = ctx.message?.text || '';
   const parts = raw.split(' ').filter(Boolean);
@@ -993,7 +1010,7 @@ bot.command('refund', async (ctx) => {
 });
 
 bot.command('simulate_abuse', async (ctx) => {
-  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isOwner(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const args = ctx.message?.text.split(' ').filter(Boolean) || [];
   if (args.length !== 4) {
@@ -1049,7 +1066,7 @@ bot.command('simulate_abuse', async (ctx) => {
 });
 
 bot.command('simulate_abuse_reset', async (ctx) => {
-  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isOwner(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const args = ctx.message?.text.split(' ').filter(Boolean) || [];
   if (args.length !== 2) {
@@ -1090,7 +1107,7 @@ bot.command('simulate_abuse_reset', async (ctx) => {
 });
 
 bot.command('timeline', async (ctx) => {
-  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isOwner(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const args = ctx.message?.text.split(' ').filter(Boolean) || [];
   if (args.length < 2) {
@@ -1136,7 +1153,7 @@ bot.command('timeline', async (ctx) => {
 });
 
 bot.command('groupmap', async (ctx) => {
-  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isOwner(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const mode = (typeof ctx.match === 'string' ? ctx.match.trim() : '').toLowerCase();
   let query = supabase.from('group_heatmap').select('telegram_group_id, group_name, plan, total_checks, high_risk_pct, abuse_flags');
@@ -1185,7 +1202,7 @@ async function setFeatureFlag(key: string, scope: 'global' | 'user' | 'group', s
 }
 
 bot.command('flag', async (ctx) => {
-  if (!ctx.from || !await isOwner(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isOwner(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const args = ctx.message?.text.split(' ').filter(Boolean) || [];
   if (args.length < 2) {
@@ -1279,7 +1296,7 @@ bot.command('feedback', async (ctx) => {
 
 // Command: /broadcast
 bot.command('broadcast', async (ctx) => {
-  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   broadcastState.set(ctx.from.id, true);
 
@@ -1304,7 +1321,7 @@ bot.command('cancel', async (ctx) => {
 
 // Command: /health
 bot.command('health', async (ctx) => {
-  if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString(), (ctx as any).state?.userRole)) return;
 
   const dbStart = Date.now();
   const { error } = await supabase.from('users').select('id').limit(1);
@@ -1338,7 +1355,7 @@ Contact admin or upgrade to enable protection.`,
 bot.command('help', async (ctx) => {
   if (!ctx.from) return;
 
-  if (await isAdmin(ctx.from.id.toString())) {
+  if (await isAdmin(ctx.from.id.toString(), (ctx as any).state?.userRole)) {
     return ctx.reply(`👑 *Admin Help*
 
 Admin:
@@ -1380,7 +1397,7 @@ bot.on('message:photo', async (ctx) => {
   if (!user) return;
 
   // Check consent first (bypass for admins)
-  const isUserAdmin = await isAdmin(user.id.toString());
+  const isUserAdmin = await isAdmin(user.id.toString(), (ctx as any).state?.userRole);
   
   if (!isUserAdmin) {
     const { data: userData } = await supabase
@@ -1431,7 +1448,7 @@ bot.on('message:text', async (ctx) => {
   const text = ctx.message.text;
   const userId = ctx.from?.id;
 
-  if (userId && broadcastState.has(userId) && await isAdmin(userId.toString())) {
+  if (userId && broadcastState.has(userId) && await isAdmin(userId.toString(), (ctx as any).state?.userRole)) {
     broadcastState.delete(userId);
 
     const { data: users } = await supabase
@@ -1511,7 +1528,7 @@ bot.on('message:text', async (ctx) => {
 
   if (userId && replyState.has(userId)) {
     const state = replyState.get(userId);
-    if (state?.step === 'waiting_reply' && await isAdmin(userId.toString())) {
+    if (state?.step === 'waiting_reply' && await isAdmin(userId.toString(), (ctx as any).state?.userRole)) {
       replyState.delete(userId);
 
       try {
@@ -1661,7 +1678,7 @@ bot.on('callback_query', async (ctx) => {
 
   // Owner Reply
   if (data?.startsWith('reply_feedback_') && userId) {
-    if (!await isAdmin(userId.toString())) {
+    if (!await isAdmin(userId.toString(), (ctx as any).state?.userRole)) {
       await ctx.answerCallbackQuery('Not allowed');
       return;
     }
@@ -1677,7 +1694,7 @@ bot.on('callback_query', async (ctx) => {
 
   // Owner Ignore
   if (data?.startsWith('ignore_feedback_')) {
-    if (!userId || !await isAdmin(userId.toString())) {
+    if (!userId || !await isAdmin(userId.toString(), (ctx as any).state?.userRole)) {
       await ctx.answerCallbackQuery('Not allowed');
       return;
     }
