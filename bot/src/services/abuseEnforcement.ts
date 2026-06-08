@@ -9,23 +9,34 @@ const ABUSE_THRESHOLDS = {
 };
 
 export async function checkAbuseAndEnforce(userId: string) {
-  // Get user's abuse flags
-  const { data: flags } = await supabase
+  // Get total user's abuse flags (cheapest query)
+  const { count: totalFlags } = await supabase
     .from('abuse_flags')
-    .select('*')
+    .select('*', { count: 'exact', head: true })
     .eq('user_id', userId);
 
-  if (!flags || flags.length === 0) return;
-
-  const totalFlags = flags.length;
+  if (!totalFlags || totalFlags === 0) return;
   
-  // Count flags in last 24h
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const flagsToday = flags.filter(f => new Date(f.created_at) > oneDayAgo).length;
+  // Time ranges for filtering
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Count flags in last 7 days
-  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const flagsThisWeek = flags.filter(f => new Date(f.created_at) > oneWeekAgo).length;
+  // Run subsequent time-based count queries in parallel
+  const [
+    { count: flagsToday },
+    { count: flagsThisWeek }
+  ] = await Promise.all([
+    supabase
+      .from('abuse_flags')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gt('created_at', oneDayAgo),
+    supabase
+      .from('abuse_flags')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gt('created_at', oneWeekAgo)
+  ]);
 
   let actionTaken = null;
   let reason = '';
@@ -51,7 +62,7 @@ export async function checkAbuseAndEnforce(userId: string) {
     actionTaken = 'HARD_BAN';
     reason = `Total flags: ${totalFlags}`;
 
-  } else if (flagsThisWeek >= ABUSE_THRESHOLDS.TEMP_BAN) {
+  } else if (flagsThisWeek && flagsThisWeek >= ABUSE_THRESHOLDS.TEMP_BAN) {
     // Temp Ban (7 days)
     const bannedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     
@@ -65,7 +76,7 @@ export async function checkAbuseAndEnforce(userId: string) {
     actionTaken = 'TEMP_BAN';
     reason = `Weekly flags: ${flagsThisWeek}`;
 
-  } else if (flagsToday >= ABUSE_THRESHOLDS.THROTTLE) {
+  } else if (flagsToday && flagsToday >= ABUSE_THRESHOLDS.THROTTLE) {
     // Throttle (24 hours)
     const throttledUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
