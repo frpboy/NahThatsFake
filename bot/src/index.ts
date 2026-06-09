@@ -133,14 +133,20 @@ bot.use(async (ctx, next) => {
   const user = ctx.from;
   if (!user) return next();
 
-  // Bypass for admins/owners
-  if (await isAdmin(user.id.toString())) return next();
+  (ctx as any).state = (ctx as any).state || {};
 
   const { data } = await supabase
     .from('users')
-    .select('is_banned, banned_reason, banned_until, is_throttled, throttled_until')
+    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until')
     .eq('telegram_user_id', user.id.toString())
     .single();
+
+  if (data?.role) {
+    (ctx as any).state.userRole = data.role;
+  }
+
+  // Bypass for admins/owners
+  if (await isAdmin(user.id.toString(), (ctx as any).state.userRole)) return next();
 
   const now = new Date();
 
@@ -184,11 +190,12 @@ bot.use(async (ctx, next) => {
   const from = ctx.from;
   if (!from) return next();
 
+  (ctx as any).state = (ctx as any).state || {};
   const fromTelegramUserId = from.id.toString();
   let actingTelegramUserId = fromTelegramUserId;
   let isImpersonating = false;
 
-  if (await isOwner(fromTelegramUserId)) {
+  if (await isOwner(fromTelegramUserId, (ctx as any).state.userRole)) {
     const session = impersonationSessions.get(from.id);
     if (session) {
       if (Date.now() >= session.expiresAtMs) {
