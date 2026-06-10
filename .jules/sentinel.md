@@ -17,3 +17,8 @@
 **Vulnerability:** HMAC signatures for Telegram init data and Razorpay webhooks were being compared using standard string equality operators (`===`).
 **Learning:** Standard string equality checks evaluate characters one by one and exit early upon finding a mismatch. This allows attackers to discover the expected valid signature through a timing attack, as checking an invalid signature will take slightly longer if more characters match.
 **Prevention:** Always use `crypto.timingSafeEqual()` when verifying HMAC signatures or other secret tokens. Before using it, ensure you check that inputs are strictly valid strings (to avoid throwing a TypeError if an array or object is passed maliciously) and that their buffer lengths match exactly (since `timingSafeEqual` will throw an error if lengths differ).
+
+## 2024-06-10 - Replay Attack in Telegram Authentication
+**Vulnerability:** The Telegram `initData` validation middleware `validateTelegramData` did not check the `auth_date` parameter. This meant that once an attacker obtained a valid `initData` string, they could reuse it indefinitely to bypass authentication.
+**Learning:** Replay attacks are possible when authentication tokens lack expiration. Telegram's `initData` includes an `auth_date` timestamp for this exact reason, but it must be manually validated on the server side. Additionally, using a hardcoded string ('fallback') as an HMAC key if a token is missing breaks the cryptographic guarantee entirely.
+**Prevention:** Always validate timestamps (`auth_date`) in authentication tokens to enforce a maximum validity period (e.g., 24 hours). If a required secret (like `BOT_TOKEN`) is missing, fail securely by returning a server error rather than falling back to a weak, predictable key.
