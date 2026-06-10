@@ -133,14 +133,21 @@ bot.use(async (ctx, next) => {
   const user = ctx.from;
   if (!user) return next();
 
-  // Bypass for admins/owners
-  if (await isAdmin(user.id.toString())) return next();
+  (ctx as any).state = (ctx as any).state || {};
 
+  // ⚡ Bolt Optimization: Combine 'role' and ban-check lookups into a single query
+  // to avoid N+1 database queries on every incoming message.
   const { data } = await supabase
     .from('users')
-    .select('is_banned, banned_reason, banned_until, is_throttled, throttled_until')
+    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until')
     .eq('telegram_user_id', user.id.toString())
     .single();
+
+  // Cache the role so subsequent middleware (like impersonation) can use it without re-querying
+  (ctx as any).state.cachedRole = data?.role || 'user';
+
+  // Bypass for admins/owners (passes cached role to avoid redundant DB hit)
+  if (await isAdmin(user.id.toString(), (ctx as any).state.cachedRole)) return next();
 
   const now = new Date();
 
@@ -184,11 +191,13 @@ bot.use(async (ctx, next) => {
   const from = ctx.from;
   if (!from) return next();
 
+  (ctx as any).state = (ctx as any).state || {};
+
   const fromTelegramUserId = from.id.toString();
   let actingTelegramUserId = fromTelegramUserId;
   let isImpersonating = false;
 
-  if (await isOwner(fromTelegramUserId)) {
+  if (await isOwner(fromTelegramUserId, (ctx as any).state.cachedRole)) {
     const session = impersonationSessions.get(from.id);
     if (session) {
       if (Date.now() >= session.expiresAtMs) {
