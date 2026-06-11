@@ -69,6 +69,17 @@ const validateTelegramData = (req, res, next) => {
     return res.status(401).json({ error: 'Missing hash in init data' });
   }
 
+  // 🛡️ Sentinel: Validate auth_date to prevent replay attacks (24 hour expiration)
+  const authDateStr = urlParams.get('auth_date');
+  if (!authDateStr) {
+    return res.status(401).json({ error: 'Missing auth_date in init data' });
+  }
+  const authDate = parseInt(authDateStr, 10);
+  const now = Math.floor(Date.now() / 1000);
+  if (now - authDate > 86400) { // 24 hours
+    return res.status(403).json({ error: 'Telegram init data expired' });
+  }
+
   urlParams.delete('hash');
   
   const params = [];
@@ -87,8 +98,14 @@ const validateTelegramData = (req, res, next) => {
       .digest();
   }
 
+  // 🛡️ Sentinel: Fail securely if BOT_TOKEN is missing instead of falling back to a hardcoded string
+  if (!cachedSecretKey) {
+    console.error('CRITICAL: BOT_TOKEN is not configured for Telegram validation');
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
   const calculatedHash = crypto
-    .createHmac('sha256', cachedSecretKey || 'fallback')
+    .createHmac('sha256', cachedSecretKey)
     .update(dataCheckString)
     .digest('hex');
     

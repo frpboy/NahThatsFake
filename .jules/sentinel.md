@@ -17,3 +17,8 @@
 **Vulnerability:** HMAC signatures for Telegram init data and Razorpay webhooks were being compared using standard string equality operators (`===`).
 **Learning:** Standard string equality checks evaluate characters one by one and exit early upon finding a mismatch. This allows attackers to discover the expected valid signature through a timing attack, as checking an invalid signature will take slightly longer if more characters match.
 **Prevention:** Always use `crypto.timingSafeEqual()` when verifying HMAC signatures or other secret tokens. Before using it, ensure you check that inputs are strictly valid strings (to avoid throwing a TypeError if an array or object is passed maliciously) and that their buffer lengths match exactly (since `timingSafeEqual` will throw an error if lengths differ).
+
+## 2026-06-11 - Secure Telegram Data Validation
+**Vulnerability:** Telegram auth_date was not checked, allowing replay attacks, and missing BOT_TOKEN fell back to a hardcoded string.
+**Learning:** Always validate timestamps on signed payloads and fail securely rather than using fallback secrets.
+**Prevention:** Enforce timestamp expiration checks and explicit presence of required environment variables.
