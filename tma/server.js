@@ -135,30 +135,28 @@ app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
     }
 
     // ⚡ Bolt: Fetch DB-level counts concurrently instead of pulling all rows into memory
+    // and use database-level RPC to calculate total revenue to avoid memory bloat
     const [
       { count: usersCount, error: usersError },
       { count: bannedCount, error: bannedError },
       { count: checksCount, error: checksError },
-      { data: payments, error: paymentsError }
+      { data: revenueData, error: revenueError }
     ] = await Promise.all([
       supabase.from('users').select('*', { count: 'exact', head: true }),
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('is_banned', true),
       supabase.from('checks').select('*', { count: 'exact', head: true }),
-      supabase.from('payments').select('amount_inr, amount_stars').eq('status', 'success')
+      supabase.rpc('get_total_revenue')
     ]);
-    
-    const revenueInr = payments?.reduce((acc, curr) => acc + (curr.amount_inr || 0), 0) / 100 || 0;
-    const revenueStars = payments?.reduce((acc, curr) => acc + (curr.amount_stars || 0), 0) || 0;
 
-    if (usersError || bannedError || checksError || paymentsError) throw new Error('Database error');
+    if (usersError || bannedError || checksError || revenueError) throw new Error('Database error');
 
     res.json({
       users: usersCount || 0,
       banned: bannedCount || 0,
       checks: checksCount || 0,
       revenue: {
-        inr: revenueInr,
-        stars: revenueStars
+        inr: revenueData?.inr || 0,
+        stars: revenueData?.stars || 0
       }
     });
   } catch (error) {
