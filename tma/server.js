@@ -69,6 +69,17 @@ const validateTelegramData = (req, res, next) => {
     return res.status(401).json({ error: 'Missing hash in init data' });
   }
 
+  // 🛡️ Sentinel: Validate auth_date to prevent replay attacks
+  const authDate = urlParams.get('auth_date');
+  if (!authDate) {
+    return res.status(401).json({ error: 'Missing auth_date in init data' });
+  }
+  const authTimestamp = parseInt(authDate, 10);
+  const currentTimestamp = Math.floor(Date.now() / 1000);
+  if (currentTimestamp - authTimestamp > 86400) {
+    return res.status(403).json({ error: 'Telegram data is expired' });
+  }
+
   urlParams.delete('hash');
   
   const params = [];
@@ -80,7 +91,12 @@ const validateTelegramData = (req, res, next) => {
   
   // ⚡ Bolt: Cache the expensive HMAC computation of the static BOT_TOKEN
   // to avoid redundant cryptographic operations on every single API request.
-  if (!cachedSecretKey && process.env.BOT_TOKEN) {
+  if (!process.env.BOT_TOKEN) {
+    // 🛡️ Sentinel: Fail securely if token is missing
+    return res.status(500).json({ error: 'Internal server error: Bot token not configured' });
+  }
+
+  if (!cachedSecretKey) {
     cachedSecretKey = crypto
       .createHmac('sha256', 'WebAppData')
       .update(process.env.BOT_TOKEN)
@@ -88,7 +104,7 @@ const validateTelegramData = (req, res, next) => {
   }
 
   const calculatedHash = crypto
-    .createHmac('sha256', cachedSecretKey || 'fallback')
+    .createHmac('sha256', cachedSecretKey)
     .update(dataCheckString)
     .digest('hex');
     
