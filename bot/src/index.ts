@@ -654,13 +654,14 @@ bot.command('admin', async (ctx) => {
 bot.command('stats', async (ctx) => {
   if (!ctx.from || !await isAdmin(ctx.from.id.toString())) return;
 
-  const { count: users } = await supabase
-    .from('users')
-    .select('*', { count: 'exact', head: true });
-
-  const { count: checks } = await supabase
-    .from('checks')
-    .select('*', { count: 'exact', head: true });
+  // ⚡ Bolt: Fetch DB counts concurrently instead of sequentially
+  const [
+    { count: users },
+    { count: checks }
+  ] = await Promise.all([
+    supabase.from('users').select('*', { count: 'exact', head: true }),
+    supabase.from('checks').select('*', { count: 'exact', head: true })
+  ]);
 
   await ctx.reply(`📊 *Platform Stats*
 
