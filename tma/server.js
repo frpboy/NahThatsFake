@@ -87,13 +87,29 @@ const validateTelegramData = (req, res, next) => {
       .digest();
   }
 
+  // 🛡️ Sentinel: Fail securely if bot token is missing instead of falling back to hardcoded string
+  if (!cachedSecretKey) {
+    return res.status(500).json({ error: 'Server misconfiguration: missing BOT_TOKEN' });
+  }
+
   const calculatedHash = crypto
-    .createHmac('sha256', cachedSecretKey || 'fallback')
+    .createHmac('sha256', cachedSecretKey)
     .update(dataCheckString)
     .digest('hex');
     
   if (timingSafeCompare(calculatedHash, hash)) {
     // Valid data
+    // 🛡️ Sentinel: Enforce auth_date validation to prevent replay attacks
+    const authDate = parseInt(urlParams.get('auth_date'), 10);
+    if (isNaN(authDate)) {
+      return res.status(403).json({ error: 'Missing or invalid auth_date' });
+    }
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    // Allow max 24 hours (86400 seconds) difference
+    if (Math.abs(currentTimestamp - authDate) > 86400) {
+      return res.status(403).json({ error: 'Expired Telegram data' });
+    }
+
     // Parse user data to attach to req
     const userStr = urlParams.get('user');
     if (userStr) {
