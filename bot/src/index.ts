@@ -128,19 +128,42 @@ startScheduler();
 // Middleware
 bot.use(rateLimitMiddleware);
 
-// Global Ban Check Middleware
+// ⚡ Bolt: Global User State Middleware to combine DB queries and prevent redundant fetches per message
 bot.use(async (ctx, next) => {
+  (ctx as any).state = (ctx as any).state || {};
   const user = ctx.from;
   if (!user) return next();
 
-  // Bypass for admins/owners
-  if (await isAdmin(user.id.toString())) return next();
-
   const { data } = await supabase
     .from('users')
-    .select('is_banned, banned_reason, banned_until, is_throttled, throttled_until')
+    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until')
     .eq('telegram_user_id', user.id.toString())
-    .single();
+    .maybeSingle();
+
+  if (data) {
+    (ctx as any).state.userRole = data.role;
+    (ctx as any).state.userData = data;
+  } else {
+    // Prevent fallback queries for brand-new users
+    (ctx as any).state.userRole = 'user';
+  }
+
+  await next();
+});
+
+// Global Ban Check Middleware
+bot.use(async (ctx, next) => {
+  (ctx as any).state = (ctx as any).state || {};
+  const user = ctx.from;
+  if (!user) return next();
+
+  const cachedRole = (ctx as any).state.userRole;
+
+  // Bypass for admins/owners
+  if (await isAdmin(user.id.toString(), cachedRole)) return next();
+
+  const data = (ctx as any).state.userData;
+  if (!data) return next(); // Not in DB yet
 
   const now = new Date();
 
@@ -181,6 +204,7 @@ bot.use(async (ctx, next) => {
 });
 
 bot.use(async (ctx, next) => {
+  (ctx as any).state = (ctx as any).state || {};
   const from = ctx.from;
   if (!from) return next();
 
@@ -188,7 +212,9 @@ bot.use(async (ctx, next) => {
   let actingTelegramUserId = fromTelegramUserId;
   let isImpersonating = false;
 
-  if (await isOwner(fromTelegramUserId)) {
+  const cachedRole = (ctx as any).state.userRole;
+
+  if (await isOwner(fromTelegramUserId, cachedRole)) {
     const session = impersonationSessions.get(from.id);
     if (session) {
       if (Date.now() >= session.expiresAtMs) {
