@@ -64,9 +64,22 @@ const validateTelegramData = (req, res, next) => {
 
   const urlParams = new URLSearchParams(initData);
   const hash = urlParams.get('hash');
+  const authDateStr = urlParams.get('auth_date');
   
   if (!hash) {
     return res.status(401).json({ error: 'Missing hash in init data' });
+  }
+
+  // 🛡️ Sentinel: Enforce auth_date expiration to prevent replay attacks
+  if (!authDateStr) {
+    return res.status(401).json({ error: 'Missing auth_date in init data' });
+  }
+
+  const authDate = parseInt(authDateStr, 10);
+  const now = Math.floor(Date.now() / 1000);
+  // 24 hours in seconds
+  if (now - authDate > 86400) {
+    return res.status(401).json({ error: 'Telegram init data expired' });
   }
 
   urlParams.delete('hash');
@@ -78,9 +91,15 @@ const validateTelegramData = (req, res, next) => {
   
   const dataCheckString = params.sort().join('\n');
   
+  // 🛡️ Sentinel: Fail securely if BOT_TOKEN is missing instead of using a fallback string
+  if (!process.env.BOT_TOKEN) {
+    console.error('CRITICAL: BOT_TOKEN is not configured for Telegram validation');
+    return res.status(500).json({ error: 'Internal server error: Authentication misconfigured' });
+  }
+
   // ⚡ Bolt: Cache the expensive HMAC computation of the static BOT_TOKEN
   // to avoid redundant cryptographic operations on every single API request.
-  if (!cachedSecretKey && process.env.BOT_TOKEN) {
+  if (!cachedSecretKey) {
     cachedSecretKey = crypto
       .createHmac('sha256', 'WebAppData')
       .update(process.env.BOT_TOKEN)
@@ -88,7 +107,7 @@ const validateTelegramData = (req, res, next) => {
   }
 
   const calculatedHash = crypto
-    .createHmac('sha256', cachedSecretKey || 'fallback')
+    .createHmac('sha256', cachedSecretKey)
     .update(dataCheckString)
     .digest('hex');
     
