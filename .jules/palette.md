@@ -7,3 +7,6 @@
 ## 2024-05-24 - Async Loading States and A11y for Payment Buttons
 **Learning:** Actionable async buttons, especially for payments (like in `premium.html`), often lack `disabled` and `aria-busy` states during processing. This can lead to double-click submissions (double-charges) and leaves screen reader users unaware of the loading state. Furthermore, dynamic status messages need proper ARIA roles to be announced correctly.
 **Action:** Always wrap async payment interactions with logic to disable action buttons and set `aria-busy="true"`. Use `role="alert"` + `aria-live="assertive"` for dynamic error messages, and `role="status"` + `aria-live="polite"` for non-critical status updates.
+## 2024-05-25 - Playwright Intercepting and Path Resolution
+**Learning:** When using Playwright inside an external test directory (e.g., `/home/jules/verification`) to verify frontend scripts in a repository workspace (e.g., `/app/tma`), using `path.resolve(__dirname, '../tma/...')` leads to file-not-found errors due to incorrect relative path assumptions.
+**Action:** Always use absolute paths starting with `/app/` when referencing repository files from external ad-hoc test scripts to ensure reliable execution.
