@@ -276,7 +276,12 @@ async function loadChecks() {
     } catch (error) {
         console.error('Failed to load checks:', error);
         if (currentPage === 1) {
-            document.getElementById('recent-checks').innerHTML = '<div class="loading">Unable to load checks</div>';
+            document.getElementById('recent-checks').innerHTML = `
+                <div class="loading" role="alert" aria-live="assertive">
+                    <p>Unable to load checks</p>
+                    <button class="button button-secondary" onclick="loadChecks()">🔄 Try Again</button>
+                </div>
+            `;
         }
     }
 }
