@@ -302,15 +302,16 @@ function renderChecks() {
         const riskClass = `risk-${(check.risk_level || 'low').toLowerCase()}`;
         const scorePercent = check.score ? Math.round(check.score * 100) : 0;
         const date = new Date(check.created_at).toLocaleDateString();
+        const typeLabel = check.check_type === 'image' ? 'Image Analysis' : 'Link Analysis';
 
         return `
-            <div class="check-item" role="button" tabindex="0" onclick="viewCheckDetails('${check.id}')" onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); viewCheckDetails('${check.id}'); }">
-                <div class="check-icon ${check.check_type}">${icon}</div>
-                <div class="check-details">
-                    <div class="check-type">${check.check_type === 'image' ? 'Image Analysis' : 'Link Analysis'}</div>
+            <div class="check-item" role="button" tabindex="0" aria-label="${typeLabel} on ${date}. Risk level: ${check.risk_level || 'UNKNOWN'}, ${scorePercent}% Risk" onclick="viewCheckDetails('${check.id}')" onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); viewCheckDetails('${check.id}'); }">
+                <div class="check-icon ${check.check_type}" aria-hidden="true">${icon}</div>
+                <div class="check-details" aria-hidden="true">
+                    <div class="check-type">${typeLabel}</div>
                     <div class="check-date">${date}</div>
                 </div>
-                <div class="check-result">
+                <div class="check-result" aria-hidden="true">
                     <div class="risk-badge ${riskClass}">${check.risk_level || 'UNKNOWN'}</div>
                     <div style="font-size: 12px; color: var(--tg-theme-hint-color); margin-top: 4px;">${scorePercent}% Risk</div>
                 </div>
