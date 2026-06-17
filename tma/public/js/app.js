@@ -276,7 +276,7 @@ async function loadChecks() {
     } catch (error) {
         console.error('Failed to load checks:', error);
         if (currentPage === 1) {
-            document.getElementById('recent-checks').innerHTML = '<div class="loading">Unable to load checks</div>';
+            document.getElementById('recent-checks').innerHTML = '<div class="error" role="alert" aria-live="assertive">Unable to load checks</div>';
         }
     }
 }
@@ -404,6 +404,9 @@ function showError(message) {
     if (errorEl) {
         errorEl.textContent = message;
         errorEl.classList.remove('hidden');
+        // Ensure ARIA attributes are set correctly, even if they were manipulated
+        errorEl.setAttribute('role', 'alert');
+        errorEl.setAttribute('aria-live', 'assertive');
     }
 }
 
