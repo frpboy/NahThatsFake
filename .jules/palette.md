@@ -7,3 +7,6 @@
 ## 2024-05-24 - Async Loading States and A11y for Payment Buttons
 **Learning:** Actionable async buttons, especially for payments (like in `premium.html`), often lack `disabled` and `aria-busy` states during processing. This can lead to double-click submissions (double-charges) and leaves screen reader users unaware of the loading state. Furthermore, dynamic status messages need proper ARIA roles to be announced correctly.
 **Action:** Always wrap async payment interactions with logic to disable action buttons and set `aria-busy="true"`. Use `role="alert"` + `aria-live="assertive"` for dynamic error messages, and `role="status"` + `aria-live="polite"` for non-critical status updates.
+## 2024-05-24 - Consolidated Screen Reader Announcements for Interactive Cards
+**Learning:** For interactive list items built with vanilla JS (like `.check-item`), screen readers often read out the child elements in a fragmented way if not properly structured. This creates a noisy and confusing experience.
+**Action:** Always add a single, comprehensive `aria-label` to the parent container of complex interactive elements, and apply `aria-hidden="true"` to the inner child tags (`.check-icon`, `.check-details`, `.check-result`) to consolidate the announcement into a single, cohesive phrase.
