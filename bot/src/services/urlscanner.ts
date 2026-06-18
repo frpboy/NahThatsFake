@@ -172,7 +172,9 @@ async function checkVirusTotal(url: string): Promise<{
     // But let's try to submit or check existing report.
     
     // Check existing analysis first by URL identifier
-    const urlId = Buffer.from(url).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+    // ⚡ Bolt Optimization: Replaced base64 encode + string replacements with native base64url encoding
+    // This provides a significant speedup and creates less GC garbage for frequent URL processing.
+    const urlId = Buffer.from(url).toString('base64url');
     
     try {
         const reportResponse = await axios.get(
