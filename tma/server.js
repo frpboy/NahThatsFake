@@ -31,7 +31,11 @@ app.use(cors({
   },
   allowedHeaders: ['Content-Type', 'X-Telegram-Init-Data']
 }));
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Supabase client
@@ -450,7 +454,7 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
   if (!signature) return res.status(400).send('Missing signature');
   
   const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || secret);
-  shasum.update(JSON.stringify(req.body));
+  shasum.update(req.rawBody || JSON.stringify(req.body));
   const digest = shasum.digest('hex');
 
   // If testing, log both for debugging (remove in production)
