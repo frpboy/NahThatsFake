@@ -12,3 +12,6 @@
 
 **Learning:** Global middlewares and command handlers that repeatedly query the database (e.g., calling `isAdmin` or `getRole` on every message) introduce significant N+1 query bottlenecks and DB load on every action.
 **Action:** Combine data fetches early in the middleware chain and cache the results in the `context.state` object (e.g., `(ctx as any).state`). Pass this cached state as an optional argument to helper functions like `isAdmin(id, cachedRole)` to preserve encapsulation while avoiding redundant database lookups.
+## 2024-05-19 - Native base64url encoding
+**Learning:** In Node.js environments (v14.18+), string manipulations for URL-safe base64 encoding `Buffer.from(data).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')` are slow and create unnecessary GC garbage.
+**Action:** Use Node.js native `base64url` encoding via `Buffer.from(data).toString('base64url')`. It is functionally identical (strict adherence to RFC 4648) and significantly faster since it avoids multiple regex string replacements.
