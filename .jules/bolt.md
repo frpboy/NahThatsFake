@@ -15,3 +15,6 @@
 ## 2024-06-25 - Native Base64 URL Encoding Performance
 **Learning:** Manual regex replacements after base64 encoding (`Buffer.from(data).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')`) are significantly slower and create more GC garbage than using Node.js's native `base64url` encoding (`Buffer.from(data).toString('base64url')`), which offers up to an 8.4x speedup.
 **Action:** Always use `toString('base64url')` when generating URL-safe base64 strings in Node.js (v14.18+) to optimize performance and reduce memory allocations.
+## 2026-06-20 - Optimize /api/user/checks with Inner Join
+**Learning:** Found a common N+1 query pattern in `tma/server.js` where the app fetched a user's `id` from their `telegram_user_id` and then sequentially queried for `checks` associated with that user. This is a common pattern when bridging external identity (Telegram) with internal foreign keys.
+**Action:** Replaced sequential API requests with a single query using Supabase's `inner` join capability (`users!inner(telegram_user_id)`). This cuts DB round trips in half, improving response time for the heavily used `/api/user/checks` endpoint.
