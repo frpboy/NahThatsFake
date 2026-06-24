@@ -21,3 +21,8 @@
 **Vulnerability:** The Telegram `initData` authentication logic in `tma/server.js` was vulnerable to replay attacks because it did not validate the `auth_date` parameter for expiration. Additionally, if `process.env.BOT_TOKEN` was not configured, the backend insecurely fell back to a hardcoded string ('fallback') to generate HMAC secrets, which allowed bypassing authentication entirely.
 **Learning:** Telegram `initData` is fully client-controlled until its HMAC is validated. Relying only on the hash check does not prevent replay attacks. Also, failing open by using fallback secrets when environment variables are missing is a severe security anti-pattern for authentication logic.
 **Prevention:** Always extract and validate time-based parameters like `auth_date` to enforce strict expiration (e.g., 24 hours). Ensure missing critical environment variables used for authentication lead to an immediate secure failure (e.g., HTTP 500) rather than falling back to guessable defaults.
+
+## 2024-06-25 - Missing Secret Check for HMAC
+**Vulnerability:** `crypto.createHmac` was being called with potentially undefined secrets (`process.env.RAZORPAY_WEBHOOK_SECRET` and `process.env.RAZORPAY_KEY_SECRET`), which can throw a `TypeError` and crash the server, causing a DoS.
+**Learning:** Always check that secret keys are defined before passing them into `crypto.createHmac`. This prevents unhandled exceptions on missing environment variables.
+**Prevention:** Add explicit guard clauses (`if (!secret) return res.status(500)...`) before using cryptographic functions.

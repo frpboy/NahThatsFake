@@ -31,7 +31,11 @@ app.use(cors({
   },
   allowedHeaders: ['Content-Type', 'X-Telegram-Init-Data']
 }));
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Supabase client
@@ -322,6 +326,10 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
   const userId = req.telegramUser ? req.telegramUser.id : null;
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
+  if (!process.env.RAZORPAY_KEY_SECRET) {
+    return res.status(500).json({ error: 'Razorpay secret not configured' });
+  }
+
   const generated_signature = crypto
     .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
     .update(razorpay_order_id + "|" + razorpay_payment_id)
@@ -449,8 +457,12 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
   const signature = req.headers['x-razorpay-signature'];
   if (!signature) return res.status(400).send('Missing signature');
   
+  if (!process.env.RAZORPAY_WEBHOOK_SECRET && !secret) {
+    return res.status(500).send('Webhook secret not configured');
+  }
+
   const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || secret);
-  shasum.update(JSON.stringify(req.body));
+  shasum.update(req.rawBody || '');
   const digest = shasum.digest('hex');
 
   // If testing, log both for debugging (remove in production)
