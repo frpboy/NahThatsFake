@@ -31,7 +31,11 @@ app.use(cors({
   },
   allowedHeaders: ['Content-Type', 'X-Telegram-Init-Data']
 }));
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Supabase client
@@ -443,14 +447,21 @@ app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, 
 
 // 4. Razorpay Webhook (Server-to-Server)
 app.post('/api/payment/razorpay-webhook', async (req, res) => {
-  const secret = process.env.RAZORPAY_KEY_SECRET;
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
+
+  // 🛡️ Sentinel: Validate secret exists before using crypto to prevent Unhandled Promise Rejection (DoS)
+  if (!secret) {
+    console.error('CRITICAL: Razorpay webhook secret is not configured');
+    return res.status(500).send('Internal server error');
+  }
   
   // Validate signature
   const signature = req.headers['x-razorpay-signature'];
   if (!signature) return res.status(400).send('Missing signature');
   
-  const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || secret);
-  shasum.update(JSON.stringify(req.body));
+  const shasum = crypto.createHmac('sha256', secret);
+  // 🛡️ Sentinel: Use req.rawBody instead of JSON.stringify to ensure exact payload matching
+  shasum.update(req.rawBody || '');
   const digest = shasum.digest('hex');
 
   // If testing, log both for debugging (remove in production)
