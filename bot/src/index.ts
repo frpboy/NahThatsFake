@@ -659,13 +659,15 @@ bot.command('admin', async (ctx) => {
 bot.command('stats', async (ctx) => {
   if (!ctx.from || !await isAdmin(ctx.from.id.toString(), (ctx as any).state?.role)) return;
 
-  const { count: users } = await supabase
-    .from('users')
-    .select('*', { count: 'exact', head: true });
-
-  const { count: checks } = await supabase
-    .from('checks')
-    .select('*', { count: 'exact', head: true });
+  // ⚡ Bolt: Execute independent stats queries concurrently via Promise.all
+  // to eliminate redundant DB latency and speed up command execution time.
+  const [
+    { count: users },
+    { count: checks }
+  ] = await Promise.all([
+    supabase.from('users').select('*', { count: 'exact', head: true }),
+    supabase.from('checks').select('*', { count: 'exact', head: true })
+  ]);
 
   await ctx.reply(`📊 *Platform Stats*
 
