@@ -15,3 +15,7 @@
 ## 2024-06-25 - Native Base64 URL Encoding Performance
 **Learning:** Manual regex replacements after base64 encoding (`Buffer.from(data).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')`) are significantly slower and create more GC garbage than using Node.js's native `base64url` encoding (`Buffer.from(data).toString('base64url')`), which offers up to an 8.4x speedup.
 **Action:** Always use `toString('base64url')` when generating URL-safe base64 strings in Node.js (v14.18+) to optimize performance and reduce memory allocations.
+## 2024-06-27 - Concurrent Database Queries
+
+**Learning:** Sequential, independent database queries (like `await query1; await query2;` for stats or counts) create redundant round-trip latency that linearly slows down request handling.
+**Action:** Always wrap independent asynchronous operations (especially Supabase queries) in `Promise.all([query1, query2])` to execute them concurrently, effectively eliminating the redundant latency.
