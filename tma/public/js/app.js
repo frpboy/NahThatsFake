@@ -291,7 +291,7 @@ function renderChecks() {
                 <div aria-hidden="true" style="font-size: 2rem; margin-bottom: 8px;">🕵️</div>
                 <p style="margin-bottom: 12px; color: var(--tg-theme-text-color);">No checks yet</p>
                 <p style="font-size: 13px; margin-bottom: 16px;">Forward a message or link to the bot to get started!</p>
-                <button class="button button-secondary" onclick="openBot()" style="max-width: 200px; margin: 0 auto; padding: 10px 16px; font-size: 14px;">🤖 Open Bot Chat</button>
+                <button class="button button-secondary" onclick="openBot()" style="max-width: 200px; margin: 0 auto; padding: 10px 16px; font-size: 14px;"><span aria-hidden="true">🤖</span> Open Bot Chat</button>
             </div>
         `;
         return;
@@ -339,7 +339,7 @@ async function loadMoreChecks() {
     if (btn) {
         btn.disabled = true;
         btn.setAttribute('aria-busy', 'true');
-        btn.innerHTML = '⏳ Loading...';
+        btn.innerHTML = '<span aria-hidden="true">⏳</span> Loading...';
     }
 
     try {
