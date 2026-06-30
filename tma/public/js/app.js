@@ -7,411 +7,424 @@ const ITEMS_PER_PAGE = 10;
 
 // Initialize the app
 function initApp() {
-    // Basic initialization
-    tg.ready();
-    
-    // Request full screen if supported (Bot API 8.0+)
-    if (tg.requestFullscreen && parseFloat(tg.version) >= 6.1) {
-        tg.requestFullscreen();
-    } else {
-        tg.expand();
-    }
+  // Basic initialization
+  tg.ready();
 
-    // Set header color
-    if (tg.setHeaderColor) {
-        tg.setHeaderColor(tg.themeParams.header_bg_color || tg.themeParams.bg_color || '#ffffff');
-    }
+  // Request full screen if supported (Bot API 8.0+)
+  if (tg.requestFullscreen && parseFloat(tg.version) >= 6.1) {
+    tg.requestFullscreen();
+  } else {
+    tg.expand();
+  }
 
-    // Handle closing confirmation
-    if (tg.enableClosingConfirmation) {
-        tg.enableClosingConfirmation();
-    }
+  // Set header color
+  if (tg.setHeaderColor) {
+    tg.setHeaderColor(
+      tg.themeParams.header_bg_color || tg.themeParams.bg_color || "#ffffff",
+    );
+  }
 
-    // Get user data
-    // WARNING: initDataUnsafe is insecure for sensitive operations, 
-    // but useful for immediate UI rendering before backend verification.
-    user = tg.initDataUnsafe.user;
+  // Handle closing confirmation
+  if (tg.enableClosingConfirmation) {
+    tg.enableClosingConfirmation();
+  }
 
-    if (user) {
-        // We are inside Telegram
-        loadUserData();
-        loadChecks();
-        checkAdmin();
-        
-        // Hide login widget if it was somehow visible
-        const loginWidget = document.getElementById('login-widget');
-        if (loginWidget) loginWidget.classList.add('hidden');
-    } else {
-        // We are outside Telegram (web browser)
-        document.getElementById('loading').classList.add('hidden');
-        document.getElementById('login-widget').classList.remove('hidden');
-        
-        // Check for stored session or handle web login flow
-        // For now, just show the widget
-        
-        // Show "Open in Telegram" button when outside Telegram
-        const openTgBtn = document.getElementById('open-in-telegram-btn');
-        if (openTgBtn) openTgBtn.classList.remove('hidden');
-    }
+  // Get user data
+  // WARNING: initDataUnsafe is insecure for sensitive operations,
+  // but useful for immediate UI rendering before backend verification.
+  user = tg.initDataUnsafe.user;
 
-    // Apply theme initially and listen for changes
-    applyTheme();
-    tg.onEvent('themeChanged', applyTheme);
-    
-    // Listen for viewport changes
-    tg.onEvent('viewportChanged', () => {
-        // Adjust layout if needed
-        console.log('Viewport changed:', tg.viewportHeight);
-    });
+  if (user) {
+    // We are inside Telegram
+    loadUserData();
+    loadChecks();
+    checkAdmin();
+
+    // Hide login widget if it was somehow visible
+    const loginWidget = document.getElementById("login-widget");
+    if (loginWidget) loginWidget.classList.add("hidden");
+  } else {
+    // We are outside Telegram (web browser)
+    document.getElementById("loading").classList.add("hidden");
+    document.getElementById("login-widget").classList.remove("hidden");
+
+    // Check for stored session or handle web login flow
+    // For now, just show the widget
+
+    // Show "Open in Telegram" button when outside Telegram
+    const openTgBtn = document.getElementById("open-in-telegram-btn");
+    if (openTgBtn) openTgBtn.classList.remove("hidden");
+  }
+
+  // Apply theme initially and listen for changes
+  applyTheme();
+  tg.onEvent("themeChanged", applyTheme);
+
+  // Listen for viewport changes
+  tg.onEvent("viewportChanged", () => {
+    // Adjust layout if needed
+    console.log("Viewport changed:", tg.viewportHeight);
+  });
 }
 
 // Check if user is admin
 async function checkAdmin() {
-    try {
-        // Send initData for verification instead of just ID
-        const headers = {
-            'Content-Type': 'application/json',
-            'X-Telegram-Init-Data': tg.initData // Send raw initData
-        };
+  try {
+    // Send initData for verification instead of just ID
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Telegram-Init-Data": tg.initData, // Send raw initData
+    };
 
-        // Fallback for dev/test without backend validation implemented yet
-        // In production, backend MUST validate the hash
-        const res = await fetch(`/api/user/role?userId=${user.id}`, { headers });
-        
-        if (!res.ok) throw new Error('Network response was not ok');
-        
-        const data = await res.json();
-        
-        if (data.role === 'owner' || data.role === 'admin') {
-            document.getElementById('admin-dashboard').classList.remove('hidden');
-            // If owner, show infinity symbol for credits
-            if (data.role === 'owner') {
-                const creditsEl = document.getElementById('credits-remaining');
-                if (creditsEl) creditsEl.textContent = '∞';
-            }
-            loadAdminStats();
-        }
-    } catch (e) {
-        console.error('Role check failed:', e);
+    // Fallback for dev/test without backend validation implemented yet
+    // In production, backend MUST validate the hash
+    const res = await fetch(`/api/user/role?userId=${user.id}`, { headers });
+
+    if (!res.ok) throw new Error("Network response was not ok");
+
+    const data = await res.json();
+
+    if (data.role === "owner" || data.role === "admin") {
+      document.getElementById("admin-dashboard").classList.remove("hidden");
+      // If owner, show infinity symbol for credits
+      if (data.role === "owner") {
+        const creditsEl = document.getElementById("credits-remaining");
+        if (creditsEl) creditsEl.textContent = "∞";
+      }
+      loadAdminStats();
     }
+  } catch (e) {
+    console.error("Role check failed:", e);
+  }
 }
 
 // Load admin stats
 function loadAdminStats() {
-    fetch('/api/admin/stats', {
-        headers: { 'X-Telegram-Init-Data': tg.initData }
+  fetch("/api/admin/stats", {
+    headers: { "X-Telegram-Init-Data": tg.initData },
+  })
+    .then((r) => r.json())
+    .then((d) => {
+      if (d.error) return;
+      document.getElementById("admin-users").textContent = d.users || "-";
+      document.getElementById("admin-banned").textContent = d.banned || "-";
+      document.getElementById("admin-checks").textContent = d.checks || "-";
+      document.getElementById("admin-revenue-inr").textContent =
+        "₹" + (d.revenue?.inr || 0);
+      document.getElementById("admin-revenue-stars").textContent =
+        d.revenue?.stars || 0;
     })
-    .then(r => r.json())
-    .then(d => {
-        if (d.error) return;
-        document.getElementById('admin-users').textContent = d.users || '-';
-        document.getElementById('admin-banned').textContent = d.banned || '-';
-        document.getElementById('admin-checks').textContent = d.checks || '-';
-        document.getElementById('admin-revenue-inr').textContent = '₹' + (d.revenue?.inr || 0);
-        document.getElementById('admin-revenue-stars').textContent = d.revenue?.stars || 0;
-    })
-    .catch(e => console.error('Admin stats error:', e));
+    .catch((e) => console.error("Admin stats error:", e));
 }
 
 function adminBroadcast() {
-    hapticFeedback('medium');
-    tg.showPopup({
-        title: 'Broadcast',
-        message: 'To send a broadcast, use the /broadcast command in the bot.',
-        buttons: [{type: 'ok'}]
-    });
+  hapticFeedback("medium");
+  tg.showPopup({
+    title: "Broadcast",
+    message: "To send a broadcast, use the /broadcast command in the bot.",
+    buttons: [{ type: "ok" }],
+  });
 }
 
 function adminViewLogs() {
-    hapticFeedback('light');
-    tg.showAlert('Audit logs viewer coming soon!');
+  hapticFeedback("light");
+  tg.showAlert("Audit logs viewer coming soon!");
 }
 
 // Apply Telegram theme
 function applyTheme() {
-    const themeParams = tg.themeParams;
-    if (themeParams) {
-        const root = document.documentElement;
-        
-        // Set CSS variables from theme params
-        const setVar = (name, value) => {
-            if (value) root.style.setProperty(name, value);
-        };
+  const themeParams = tg.themeParams;
+  if (themeParams) {
+    const root = document.documentElement;
 
-        setVar('--tg-theme-bg-color', themeParams.bg_color);
-        setVar('--tg-theme-text-color', themeParams.text_color);
-        setVar('--tg-theme-hint-color', themeParams.hint_color);
-        setVar('--tg-theme-link-color', themeParams.link_color);
-        setVar('--tg-theme-button-color', themeParams.button_color);
-        setVar('--tg-theme-button-text-color', themeParams.button_text_color);
-        setVar('--tg-theme-secondary-bg-color', themeParams.secondary_bg_color);
-        setVar('--tg-theme-header-bg-color', themeParams.header_bg_color);
-        setVar('--tg-theme-section-bg-color', themeParams.section_bg_color);
-        
-        // Add dark mode class if needed
-        if (themeParams.bg_color && isDarkColor(themeParams.bg_color)) {
-            document.body.classList.add('dark');
-        } else {
-            document.body.classList.remove('dark');
-        }
-        
-        // Update header color dynamically
-        if (tg.setHeaderColor) {
-            tg.setHeaderColor(themeParams.header_bg_color || themeParams.bg_color);
-        }
-        
-        // Update bottom bar color if supported (Bot API 7.10+)
-        if (tg.setBottomBarColor) {
-            tg.setBottomBarColor(themeParams.bottom_bar_bg_color || themeParams.secondary_bg_color || themeParams.bg_color);
-        }
+    // Set CSS variables from theme params
+    const setVar = (name, value) => {
+      if (value) root.style.setProperty(name, value);
+    };
+
+    setVar("--tg-theme-bg-color", themeParams.bg_color);
+    setVar("--tg-theme-text-color", themeParams.text_color);
+    setVar("--tg-theme-hint-color", themeParams.hint_color);
+    setVar("--tg-theme-link-color", themeParams.link_color);
+    setVar("--tg-theme-button-color", themeParams.button_color);
+    setVar("--tg-theme-button-text-color", themeParams.button_text_color);
+    setVar("--tg-theme-secondary-bg-color", themeParams.secondary_bg_color);
+    setVar("--tg-theme-header-bg-color", themeParams.header_bg_color);
+    setVar("--tg-theme-section-bg-color", themeParams.section_bg_color);
+
+    // Add dark mode class if needed
+    if (themeParams.bg_color && isDarkColor(themeParams.bg_color)) {
+      document.body.classList.add("dark");
+    } else {
+      document.body.classList.remove("dark");
     }
+
+    // Update header color dynamically
+    if (tg.setHeaderColor) {
+      tg.setHeaderColor(themeParams.header_bg_color || themeParams.bg_color);
+    }
+
+    // Update bottom bar color if supported (Bot API 7.10+)
+    if (tg.setBottomBarColor) {
+      tg.setBottomBarColor(
+        themeParams.bottom_bar_bg_color ||
+          themeParams.secondary_bg_color ||
+          themeParams.bg_color,
+      );
+    }
+  }
 }
 
 // Check if color is dark
 function isDarkColor(color) {
-    if (!color) return false;
-    const hex = color.replace('#', '');
-    const r = parseInt(hex.substr(0, 2), 16);
-    const g = parseInt(hex.substr(2, 2), 16);
-    const b = parseInt(hex.substr(4, 2), 16);
-    const brightness = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-    return brightness < 128;
+  if (!color) return false;
+  const hex = color.replace("#", "");
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness < 128;
 }
 
 // Load user data from Supabase
 async function loadUserData() {
-    try {
-        const headers = { 'X-Telegram-Init-Data': tg.initData };
-        // Fetch actual user data from backend
-        const res = await fetch(`/api/user/profile?userId=${user.id}`, { headers });
-        
-        if (!res.ok) {
-             showError('Could not load your account right now. Please try again.');
-             updateUI({
-                 username: user.username || user.first_name,
-                 plan: 'free',
-                 created_at: new Date().toISOString(),
-                 daily_credits: '-',
-                 permanent_credits: '-',
-                 total_checks: '-'
-             });
-             return;
-        }
+  try {
+    const headers = { "X-Telegram-Init-Data": tg.initData };
+    // Fetch actual user data from backend
+    const res = await fetch(`/api/user/profile?userId=${user.id}`, { headers });
 
-        const profile = await res.json();
-        updateUI(profile);
-        
-    } catch (error) {
-        console.error('Failed to load user data:', error);
-        showError('Could not load your account right now. Please try again.');
-        updateUI({
-            username: user.username || user.first_name,
-            plan: 'unknown',
-            created_at: new Date().toISOString(),
-            daily_credits: '-',
-            permanent_credits: '-',
-            total_checks: '-'
-        });
+    if (!res.ok) {
+      showError("Could not load your account right now. Please try again.");
+      updateUI({
+        username: user.username || user.first_name,
+        plan: "free",
+        created_at: new Date().toISOString(),
+        daily_credits: "-",
+        permanent_credits: "-",
+        total_checks: "-",
+      });
+      return;
     }
+
+    const profile = await res.json();
+    updateUI(profile);
+  } catch (error) {
+    console.error("Failed to load user data:", error);
+    showError("Could not load your account right now. Please try again.");
+    updateUI({
+      username: user.username || user.first_name,
+      plan: "unknown",
+      created_at: new Date().toISOString(),
+      daily_credits: "-",
+      permanent_credits: "-",
+      total_checks: "-",
+    });
+  }
 }
 
 function updateUI(profile) {
-    if (profile) {
-        const safeText = (id, text) => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = text;
-        };
+  if (profile) {
+    const safeText = (id, text) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
 
-        safeText('user-username', profile.username || user.first_name);
-        safeText('user-plan', formatPlanName(profile.plan));
-        safeText('user-created', new Date(profile.created_at).toLocaleDateString());
-        safeText('credits-remaining', profile.daily_credits);
-        safeText('bonus-credits', profile.permanent_credits || 0);
-        safeText('total-checks', profile.total_checks || 0);
-    }
-    
-    document.getElementById('loading').classList.add('hidden');
-    document.getElementById('main-content').classList.remove('hidden');
+    safeText("user-username", profile.username || user.first_name);
+    safeText("user-plan", formatPlanName(profile.plan));
+    safeText("user-created", new Date(profile.created_at).toLocaleDateString());
+    safeText("credits-remaining", profile.daily_credits);
+    safeText("bonus-credits", profile.permanent_credits || 0);
+    safeText("total-checks", profile.total_checks || 0);
+  }
+
+  document.getElementById("loading").classList.add("hidden");
+  document.getElementById("main-content").classList.remove("hidden");
 }
 
 function formatPlanName(plan) {
-    const names = {
-        'free': 'Free',
-        'ind_weekly': 'Weekly Pass',
-        'ind_monthly': 'Monthly Premium',
-        'ind_annual': 'Annual Premium',
-        'ind_lifetime': 'Lifetime',
-        'grp_monthly': 'Group Monthly',
-        'grp_annual': 'Group Annual'
-    };
-    return names[plan] || plan;
+  const names = {
+    free: "Free",
+    ind_weekly: "Weekly Pass",
+    ind_monthly: "Monthly Premium",
+    ind_annual: "Annual Premium",
+    ind_lifetime: "Lifetime",
+    grp_monthly: "Group Monthly",
+    grp_annual: "Group Annual",
+  };
+  return names[plan] || plan;
 }
 
 // Load recent checks
 async function loadChecks() {
-    try {
-        const headers = { 'X-Telegram-Init-Data': tg.initData };
-        const res = await fetch(`/api/user/checks?userId=${user.id}&page=${currentPage}&limit=${ITEMS_PER_PAGE}`, { headers });
-        
-        if (!res.ok) throw new Error('Failed to fetch checks');
-        
-        const data = await res.json();
-        const newChecks = data.checks || [];
-        
-        if (currentPage === 1) {
-            checks = newChecks;
-        } else {
-            checks = [...checks, ...newChecks];
-        }
-        
-        renderChecks();
-        
-        // Hide "Load More" if no more checks
-        if (newChecks.length < ITEMS_PER_PAGE) {
-            document.getElementById('load-more-btn').classList.add('hidden');
-        } else {
-            document.getElementById('load-more-btn').classList.remove('hidden');
-        }
+  try {
+    const headers = { "X-Telegram-Init-Data": tg.initData };
+    const res = await fetch(
+      `/api/user/checks?userId=${user.id}&page=${currentPage}&limit=${ITEMS_PER_PAGE}`,
+      { headers },
+    );
 
-    } catch (error) {
-        console.error('Failed to load checks:', error);
-        if (currentPage === 1) {
-            document.getElementById('recent-checks').innerHTML = '<div class="loading">Unable to load checks</div>';
-        }
+    if (!res.ok) throw new Error("Failed to fetch checks");
+
+    const data = await res.json();
+    const newChecks = data.checks || [];
+
+    if (currentPage === 1) {
+      checks = newChecks;
+    } else {
+      checks = [...checks, ...newChecks];
     }
+
+    renderChecks();
+
+    // Hide "Load More" if no more checks
+    if (newChecks.length < ITEMS_PER_PAGE) {
+      document.getElementById("load-more-btn").classList.add("hidden");
+    } else {
+      document.getElementById("load-more-btn").classList.remove("hidden");
+    }
+  } catch (error) {
+    console.error("Failed to load checks:", error);
+    if (currentPage === 1) {
+      document.getElementById("recent-checks").innerHTML =
+        '<div class="loading">Unable to load checks</div>';
+    }
+  }
 }
 
 // Render checks in the UI
 function renderChecks() {
-    const container = document.getElementById('recent-checks');
-    
-    if (checks.length === 0) {
-        container.innerHTML = `
+  const container = document.getElementById("recent-checks");
+
+  if (checks.length === 0) {
+    container.innerHTML = `
             <div class="loading" role="status">
                 <div aria-hidden="true" style="font-size: 2rem; margin-bottom: 8px;">🕵️</div>
                 <p style="margin-bottom: 12px; color: var(--tg-theme-text-color);">No checks yet</p>
                 <p style="font-size: 13px; margin-bottom: 16px;">Forward a message or link to the bot to get started!</p>
-                <button class="button button-secondary" onclick="openBot()" style="max-width: 200px; margin: 0 auto; padding: 10px 16px; font-size: 14px;">🤖 Open Bot Chat</button>
+                <button class="button button-secondary" onclick="openBot()" style="max-width: 200px; margin: 0 auto; padding: 10px 16px; font-size: 14px;"><span aria-hidden="true">🤖</span> Open Bot Chat</button>
             </div>
         `;
-        return;
-    }
+    return;
+  }
 
-    const html = checks.map(check => {
-        const icon = check.check_type === 'image' ? '🖼️' : '🔗';
-        const riskClass = `risk-${(check.risk_level || 'low').toLowerCase()}`;
-        const scorePercent = check.score ? Math.round(check.score * 100) : 0;
-        const date = new Date(check.created_at).toLocaleDateString();
+  const html = checks
+    .map((check) => {
+      const icon = check.check_type === "image" ? "🖼️" : "🔗";
+      const riskClass = `risk-${(check.risk_level || "low").toLowerCase()}`;
+      const scorePercent = check.score ? Math.round(check.score * 100) : 0;
+      const date = new Date(check.created_at).toLocaleDateString();
 
-        const typeLabel = check.check_type === 'image' ? 'Image Analysis' : 'Link Analysis';
-        return `
-            <div class="check-item" role="button" tabindex="0" aria-label="${typeLabel} from ${date}. Risk level: ${check.risk_level || 'UNKNOWN'}, ${scorePercent}% Risk." onclick="viewCheckDetails('${check.id}')" onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); viewCheckDetails('${check.id}'); }">
+      const typeLabel =
+        check.check_type === "image" ? "Image Analysis" : "Link Analysis";
+      return `
+            <div class="check-item" role="button" tabindex="0" aria-label="${typeLabel} from ${date}. Risk level: ${check.risk_level || "UNKNOWN"}, ${scorePercent}% Risk." onclick="viewCheckDetails('${check.id}')" onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); viewCheckDetails('${check.id}'); }">
                 <div class="check-icon ${check.check_type}" aria-hidden="true">${icon}</div>
                 <div class="check-details" aria-hidden="true">
                     <div class="check-type">${typeLabel}</div>
                     <div class="check-date">${date}</div>
                 </div>
                 <div class="check-result" aria-hidden="true">
-                    <div class="risk-badge ${riskClass}">${check.risk_level || 'UNKNOWN'}</div>
+                    <div class="risk-badge ${riskClass}">${check.risk_level || "UNKNOWN"}</div>
                     <div style="font-size: 12px; color: var(--tg-theme-hint-color); margin-top: 4px;">${scorePercent}% Risk</div>
                 </div>
             </div>
         `;
-    }).join('');
+    })
+    .join("");
 
-    if (currentPage === 1) {
-        container.innerHTML = html;
-    } else {
-        container.insertAdjacentHTML('beforeend', html);
-    }
+  if (currentPage === 1) {
+    container.innerHTML = html;
+  } else {
+    container.insertAdjacentHTML("beforeend", html);
+  }
 }
 
 function viewCheckDetails(checkId) {
-    hapticFeedback('light');
-    // Future: Show detailed modal or navigate to detail view
-    console.log('View details for', checkId);
+  hapticFeedback("light");
+  // Future: Show detailed modal or navigate to detail view
+  console.log("View details for", checkId);
 }
 
 // Load more checks
 async function loadMoreChecks() {
-    hapticFeedback('light');
-    const btn = document.getElementById('load-more-btn');
-    if (btn) {
-        btn.disabled = true;
-        btn.setAttribute('aria-busy', 'true');
-        btn.innerHTML = '⏳ Loading...';
-    }
+  hapticFeedback("light");
+  const btn = document.getElementById("load-more-btn");
+  if (btn) {
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+    btn.innerHTML = "⏳ Loading...";
+  }
 
-    try {
-        currentPage++;
-        await loadChecks();
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.removeAttribute('aria-busy');
-            btn.innerHTML = 'Load More';
-        }
+  try {
+    currentPage++;
+    await loadChecks();
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.removeAttribute("aria-busy");
+      btn.innerHTML = "Load More";
     }
+  }
 }
 
 // Share referral link
 function shareReferral() {
-    hapticFeedback('medium');
-    const referralLink = `https://t.me/NahThatsFakeBot?start=${user.id}`;
-    const shareText = `🎁 Get 2 free credits for fake detection! Join Nah That's Fake: ${referralLink}`;
-    
-    // Use Telegram native sharing if available (Bot API 8.0+)
-    if (tg.shareMessage) {
-        // Need a prepared message ID for shareMessage, so we might fall back to openTelegramLink or clipboard
-        // Simpler: use openTelegramLink with share url
-        const url = `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(shareText)}`;
-        tg.openTelegramLink(url);
-    } else if (navigator.share) {
-        navigator.share({
-            title: 'Nah That\'s Fake - Referral',
-            text: shareText
-        });
-    } else {
-        navigator.clipboard.writeText(shareText);
-        tg.showAlert('Referral link copied to clipboard!');
-    }
+  hapticFeedback("medium");
+  const referralLink = `https://t.me/NahThatsFakeBot?start=${user.id}`;
+  const shareText = `🎁 Get 2 free credits for fake detection! Join Nah That's Fake: ${referralLink}`;
+
+  // Use Telegram native sharing if available (Bot API 8.0+)
+  if (tg.shareMessage) {
+    // Need a prepared message ID for shareMessage, so we might fall back to openTelegramLink or clipboard
+    // Simpler: use openTelegramLink with share url
+    const url = `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(shareText)}`;
+    tg.openTelegramLink(url);
+  } else if (navigator.share) {
+    navigator.share({
+      title: "Nah That's Fake - Referral",
+      text: shareText,
+    });
+  } else {
+    navigator.clipboard.writeText(shareText);
+    tg.showAlert("Referral link copied to clipboard!");
+  }
 }
 
 // Upgrade to premium
 function upgradePremium() {
-    hapticFeedback('light');
-    // Use openInvoice if we have a direct invoice link, or navigate to a premium page
-    // For now, open the bot with /premium command
-    tg.openTelegramLink(`https://t.me/NahThatsFakeBot?start=premium`);
+  hapticFeedback("light");
+  // Use openInvoice if we have a direct invoice link, or navigate to a premium page
+  // For now, open the bot with /premium command
+  tg.openTelegramLink(`https://t.me/NahThatsFakeBot?start=premium`);
 }
 
 // Open bot
 function openBot() {
-    hapticFeedback('light');
-    tg.openTelegramLink('https://t.me/NahThatsFakeBot');
+  hapticFeedback("light");
+  tg.openTelegramLink("https://t.me/NahThatsFakeBot");
 }
 
 // Helper for haptic feedback
 function hapticFeedback(style) {
-    if (tg.HapticFeedback) {
-        tg.HapticFeedback.impactOccurred(style);
-    }
+  if (tg.HapticFeedback) {
+    tg.HapticFeedback.impactOccurred(style);
+  }
 }
 
 // Show error message
 function showError(message) {
-    document.getElementById('loading').classList.add('hidden');
-    const errorEl = document.getElementById('error');
-    if (errorEl) {
-        errorEl.textContent = message;
-        errorEl.classList.remove('hidden');
-    }
+  document.getElementById("loading").classList.add("hidden");
+  const errorEl = document.getElementById("error");
+  if (errorEl) {
+    errorEl.textContent = message;
+    errorEl.classList.remove("hidden");
+  }
 }
 
 // Close app
 function closeApp() {
-    tg.close();
+  tg.close();
 }
 
 // Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', initApp);
+document.addEventListener("DOMContentLoaded", initApp);
