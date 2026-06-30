@@ -15,3 +15,8 @@
 ## 2024-06-25 - Native Base64 URL Encoding Performance
 **Learning:** Manual regex replacements after base64 encoding (`Buffer.from(data).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')`) are significantly slower and create more GC garbage than using Node.js's native `base64url` encoding (`Buffer.from(data).toString('base64url')`), which offers up to an 8.4x speedup.
 **Action:** Always use `toString('base64url')` when generating URL-safe base64 strings in Node.js (v14.18+) to optimize performance and reduce memory allocations.
+## 2024-07-28 - Optimize sequential Supabase queries into single round-trip
+
+**Learning:** When fetching sequential resources from Supabase (like fetching a user by `.single()` and then immediately fetching their associated checks), doing so via two `.await`ed database requests adds a full redundant round-trip of latency. Instead of sequential requests or `.inner` joins that break the `.single()` error handling, using parent-to-child resource embedding (`.select('id, checks(*)')`) combines both into one query. Modifiers like `.limit()` and `.order()` can still be correctly applied to the nested resource using the `foreignTable` option.
+
+**Action:** Always prefer combining sequential queries into single resource embedding queries. When `.single()` is used for its side-effect of throwing an error when the parent record doesn't exist (e.g. 404 user not found), preserve the parent-to-child query direction. Apply modifiers to nested tables using `{ foreignTable: 'tablename' }`.
