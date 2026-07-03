@@ -284,16 +284,12 @@ async function loadChecks() {
 // Render checks in the UI
 function renderChecks() {
     const container = document.getElementById('recent-checks');
+    const initialLoading = document.getElementById('initial-loading');
+    if (initialLoading) initialLoading.remove();
     
     if (checks.length === 0) {
-        container.innerHTML = `
-            <div class="loading" role="status">
-                <div aria-hidden="true" style="font-size: 2rem; margin-bottom: 8px;">🕵️</div>
-                <p style="margin-bottom: 12px; color: var(--tg-theme-text-color);">No checks yet</p>
-                <p style="font-size: 13px; margin-bottom: 16px;">Forward a message or link to the bot to get started!</p>
-                <button class="button button-secondary" onclick="openBot()" style="max-width: 200px; margin: 0 auto; padding: 10px 16px; font-size: 14px;">🤖 Open Bot Chat</button>
-            </div>
-        `;
+        const emptyState = document.getElementById('empty-state');
+        if (emptyState) emptyState.classList.remove('hidden');
         return;
     }
 

@@ -10,3 +10,6 @@
 ## 2024-05-24 - Consolidate screen reader announcements for check items
 **Learning:** Complex interactive items (like the list of recent checks) built with nested `div`s can fragment screen reader announcements if inner nodes containing text are read sequentially without context.
 **Action:** Always apply a single, concise `aria-label` summarizing the interactive element's entire content to the parent container (along with `role="button"` and `tabindex`), and explicitly set `aria-hidden="true"` on inner child structural elements to suppress duplicate, fragmented readouts.
+## 2026-07-03 - Avoid Flash of Empty State (FOES)
+**Learning:** Found a "Flash of Empty State" where the UI shows "No checks yet" for a fraction of a second while data is loading. This can be confusing. The initial HTML state should be a neutral loading indicator, and the empty state should only be injected dynamically if the fetched array is truly empty.
+**Action:** Always verify that initial static HTML matches the loading state, not the empty state, for dynamic data sections.
