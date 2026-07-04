@@ -10,3 +10,6 @@
 ## 2024-05-24 - Consolidate screen reader announcements for check items
 **Learning:** Complex interactive items (like the list of recent checks) built with nested `div`s can fragment screen reader announcements if inner nodes containing text are read sequentially without context.
 **Action:** Always apply a single, concise `aria-label` summarizing the interactive element's entire content to the parent container (along with `role="button"` and `tabindex`), and explicitly set `aria-hidden="true"` on inner child structural elements to suppress duplicate, fragmented readouts.
+## 2026-07-04 - Wrapping Decorative Emojis for Accessibility
+**Learning:** Decorative emojis in buttons and interactive elements are often verbosely announced by screen readers, creating poor UX for users relying on assistive tech.
+**Action:** Wrap decorative emojis in `<span>` tags with `aria-hidden="true"` to ensure screen readers ignore them while preserving the visual UI.
