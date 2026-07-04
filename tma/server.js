@@ -351,7 +351,7 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
       if (!planDetails) throw new Error('Invalid plan');
 
       // Record payment
-      await supabase.from('payments').insert({
+      const { error: insertError } = await supabase.from('payments').insert({
         user_id: user.id,
         plan_id: planId,
         amount_inr: planDetails.amount,
@@ -362,6 +362,7 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
         premium_from: new Date().toISOString(),
         premium_until: planDetails.is_credit ? null : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
       });
+      if (insertError) throw insertError;
 
       if (planDetails.is_credit) {
         // Add credits
@@ -498,7 +499,7 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
             const planDetails = getPlanDetails(planId);
             if (planDetails) {
               // Insert Payment Record
-              await supabase.from('payments').insert({
+              const { error: insertError } = await supabase.from('payments').insert({
                 user_id: user.id,
                 plan_id: planId,
                 amount_inr: payment.amount,
@@ -509,6 +510,7 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
                 premium_from: new Date().toISOString(),
                 premium_until: planDetails.is_credit ? null : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
               });
+              if (insertError) throw insertError;
 
               // Update User
               if (planDetails.is_credit) {
