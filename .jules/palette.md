@@ -10,3 +10,8 @@
 ## 2024-05-24 - Consolidate screen reader announcements for check items
 **Learning:** Complex interactive items (like the list of recent checks) built with nested `div`s can fragment screen reader announcements if inner nodes containing text are read sequentially without context.
 **Action:** Always apply a single, concise `aria-label` summarizing the interactive element's entire content to the parent container (along with `role="button"` and `tabindex`), and explicitly set `aria-hidden="true"` on inner child structural elements to suppress duplicate, fragmented readouts.
+## 2026-07-06 - Hidden Decorative Emojis
+
+**Learning:** When making targeted fixes (like wrapping emojis in `<span aria-hidden="true">`) in vanilla JS/HTML projects without strict global formatting enforcement, running an auto-formatter like Prettier on the entire file can introduce hundreds of lines of unrelated formatting diffs, polluting the commit and violating strict constraints like "Keep changes under 50 lines".
+
+**Action:** Only format the exact lines that were touched, or avoid running global auto-formatters in directories like `tma/public/` unless explicitly requested. I should respect the file's existing formatting when writing diffs manually.
