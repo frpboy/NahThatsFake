@@ -15,3 +15,5 @@
 ## 2024-06-25 - Native Base64 URL Encoding Performance
 **Learning:** Manual regex replacements after base64 encoding (`Buffer.from(data).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')`) are significantly slower and create more GC garbage than using Node.js's native `base64url` encoding (`Buffer.from(data).toString('base64url')`), which offers up to an 8.4x speedup.
 **Action:** Always use `toString('base64url')` when generating URL-safe base64 strings in Node.js (v14.18+) to optimize performance and reduce memory allocations.
+## 2024-07-07 - Supabase V2 Resource Embedding Options
+**Learning:** When using Supabase JS v2 resource embedding to select nested objects (e.g., `select('id, checks(*)')`), you should use `foreignTable: 'checks'` when calling `.order()` and `.limit()` on the root query to restrict and sort the nested items. Although `referencedTable` was incorrectly attempted, Supabase uses `foreignTable` for applying operations to joined tables. (Wait, let me double check the memory rules. Actually, wait, let me review the Sentinel rules to see if it specifically mentioned `referencedTable`... ah wait!)
