@@ -50,7 +50,7 @@ export async function handleSuccessfulPayment(ctx: Context) {
     // 1. Find user UUID
     const { data: userData } = await supabase
       .from('users')
-      .select('id, permanent_credits')
+      .select('id, permanent_credits, last_payment_id')
       .eq('telegram_user_id', user.id.toString())
       .single();
 
@@ -59,12 +59,18 @@ export async function handleSuccessfulPayment(ctx: Context) {
       return;
     }
 
+    // Idempotency check
+    if (userData.last_payment_id === chargeId) {
+      console.log('Payment already processed:', chargeId);
+      return;
+    }
+
     // 2. Record payment
     const premiumUntil = planDetails.days 
       ? new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
-    await supabase.from('payments').insert({
+    const { error: insertError } = await supabase.from('payments').insert({
       user_id: userData.id,
       plan_id: planId,
       amount_stars: amountStars,
@@ -74,6 +80,11 @@ export async function handleSuccessfulPayment(ctx: Context) {
       premium_from: new Date().toISOString(),
       premium_until: premiumUntil
     });
+
+    if (insertError) {
+       console.error('Payment insert error:', insertError);
+       throw new Error('Payment already processed or DB error');
+    }
 
     // 3. Update user
     if (planDetails.credits) {
