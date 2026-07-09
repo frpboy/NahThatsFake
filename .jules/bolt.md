@@ -15,3 +15,6 @@
 ## 2024-06-25 - Native Base64 URL Encoding Performance
 **Learning:** Manual regex replacements after base64 encoding (`Buffer.from(data).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')`) are significantly slower and create more GC garbage than using Node.js's native `base64url` encoding (`Buffer.from(data).toString('base64url')`), which offers up to an 8.4x speedup.
 **Action:** Always use `toString('base64url')` when generating URL-safe base64 strings in Node.js (v14.18+) to optimize performance and reduce memory allocations.
+## 2026-07-09 - Node.js Module Resolution in Workspaces
+**Learning:** When executing ad-hoc test scripts (like testing Supabase query generation) that require project-specific dependencies (`@supabase/supabase-js`), Node.js resolves `require()` paths relative to the script's physical location, regardless of the terminal's current working directory. Running a script located in `/app` while `cd`'d into `/app/tma` will still fail with `MODULE_NOT_FOUND` because the script itself is outside the `tma/node_modules` scope.
+**Action:** Always create and place temporary test scripts directly inside the specific sub-directory (e.g., `tma/test.js`) before executing them to ensure correct local dependency resolution in unhoisted workspaces.
