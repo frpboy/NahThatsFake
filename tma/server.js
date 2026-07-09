@@ -339,19 +339,25 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
     // Payment verified
     try {
       // Find user UUID from telegram ID
-      const { data: user } = await supabase
+      const { data: user, error: userError } = await supabase
         .from('users')
-        .select('id, permanent_credits')
+        .select('id, permanent_credits, last_payment_id')
         .eq('telegram_user_id', userId.toString())
         .single();
         
-      if (!user) throw new Error('User not found');
+      if (userError || !user) throw new Error('User not found');
+
+      // Idempotency check to prevent replay attacks
+      if (user.last_payment_id === razorpay_payment_id) {
+         console.log('Payment already processed:', razorpay_payment_id);
+         return res.json({ success: true }); // Return success for already processed
+      }
 
       const planDetails = getPlanDetails(planId);
       if (!planDetails) throw new Error('Invalid plan');
 
       // Record payment
-      await supabase.from('payments').insert({
+      const { error: insertError } = await supabase.from('payments').insert({
         user_id: user.id,
         plan_id: planId,
         amount_inr: planDetails.amount,
@@ -363,21 +369,27 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
         premium_until: planDetails.is_credit ? null : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
       });
 
+      if (insertError) throw insertError;
+
       if (planDetails.is_credit) {
         // Add credits
-        await supabase.from('users').update({
+        const { error: updateError } = await supabase.from('users').update({
           permanent_credits: (user.permanent_credits || 0) + planDetails.credits,
           last_payment_id: razorpay_payment_id,
           last_paid_at: new Date().toISOString()
         }).eq('id', user.id);
+
+        if (updateError) throw updateError;
       } else {
         // Update subscription
-        await supabase.from('users').update({
+        const { error: updateError } = await supabase.from('users').update({
           plan: planId,
           premium_until: new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString(),
           last_payment_id: razorpay_payment_id,
           last_paid_at: new Date().toISOString()
         }).eq('id', user.id);
+
+        if (updateError) throw updateError;
       }
 
       res.json({ success: true });
@@ -498,7 +510,7 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
             const planDetails = getPlanDetails(planId);
             if (planDetails) {
               // Insert Payment Record
-              await supabase.from('payments').insert({
+              const { error: insertError } = await supabase.from('payments').insert({
                 user_id: user.id,
                 plan_id: planId,
                 amount_inr: payment.amount,
@@ -510,20 +522,26 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
                 premium_until: planDetails.is_credit ? null : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
               });
 
+              if (insertError) throw insertError;
+
               // Update User
               if (planDetails.is_credit) {
-                await supabase.from('users').update({
+                const { error: updateError } = await supabase.from('users').update({
                   permanent_credits: (user.permanent_credits || 0) + planDetails.credits,
                   last_payment_id: payment.id,
                   last_paid_at: new Date().toISOString()
                 }).eq('id', user.id);
+
+                if (updateError) throw updateError;
               } else {
-                await supabase.from('users').update({
+                const { error: updateError } = await supabase.from('users').update({
                   plan: planId,
                   premium_until: new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString(),
                   last_payment_id: payment.id,
                   last_paid_at: new Date().toISOString()
                 }).eq('id', user.id);
+
+                if (updateError) throw updateError;
               }
               console.log(`Webhook: Fulfilled ${planId} for user ${telegramUserId}`);
             }
