@@ -48,14 +48,20 @@ export async function handleSuccessfulPayment(ctx: Context) {
 
   try {
     // 1. Find user UUID
-    const { data: userData } = await supabase
+    const { data: userData, error: userError } = await supabase
       .from('users')
-      .select('id, permanent_credits')
+      .select('id, permanent_credits, last_payment_id')
       .eq('telegram_user_id', user.id.toString())
       .single();
 
-    if (!userData) {
-      console.error('User not found for payment:', user.id);
+    if (userError || !userData) {
+      console.error('User not found or error for payment:', user.id, userError);
+      return;
+    }
+
+    // 🛡️ Sentinel: Prevent replay attacks with idempotency check
+    if (userData.last_payment_id === chargeId) {
+      console.log('Payment already processed:', chargeId);
       return;
     }
 
@@ -64,7 +70,7 @@ export async function handleSuccessfulPayment(ctx: Context) {
       ? new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
-    await supabase.from('payments').insert({
+    const { error: paymentError } = await supabase.from('payments').insert({
       user_id: userData.id,
       plan_id: planId,
       amount_stars: amountStars,
@@ -75,14 +81,26 @@ export async function handleSuccessfulPayment(ctx: Context) {
       premium_until: premiumUntil
     });
 
+    // 🛡️ Sentinel: Explicitly check for insert error
+    if (paymentError) {
+      console.error('Failed to insert payment record:', paymentError);
+      throw new Error('Database insert failed');
+    }
+
     // 3. Update user
     if (planDetails.credits) {
       // Credit Pack: Add credits, don't change plan
-      await supabase.from('users').update({
+      const { error: updateError } = await supabase.from('users').update({
         permanent_credits: (userData.permanent_credits || 0) + planDetails.credits,
         last_payment_id: chargeId,
         last_paid_at: new Date().toISOString()
       }).eq('id', userData.id);
+
+      // 🛡️ Sentinel: Explicitly check for update error
+      if (updateError) {
+        console.error('Failed to update user credits:', updateError);
+        throw new Error('Database update failed');
+      }
 
       await ctx.reply(`🎉 *Payment Successful!*
 
@@ -91,12 +109,18 @@ Use /credits to check your balance.`, { parse_mode: 'Markdown' });
 
     } else {
       // Subscription: Update plan
-      await supabase.from('users').update({
+      const { error: updateError } = await supabase.from('users').update({
         plan: planId,
         premium_until: premiumUntil,
         last_payment_id: chargeId,
         last_paid_at: new Date().toISOString()
       }).eq('id', userData.id);
+
+      // 🛡️ Sentinel: Explicitly check for update error
+      if (updateError) {
+        console.error('Failed to update user subscription:', updateError);
+        throw new Error('Database update failed');
+      }
 
       await ctx.reply(`🎉 *Payment Successful!*
 
