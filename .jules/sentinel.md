@@ -25,3 +25,7 @@
 **Vulnerability:** The Razorpay webhook and payment verification endpoints were vulnerable to DoS crashes due to missing validation on the HMAC secret key. Passing `undefined` to `crypto.createHmac` causes an Unhandled Promise Rejection. Additionally, webhook HMACs were computed using `JSON.stringify(req.body)`, which is unreliable since it alters key order and whitespace from the raw request.
 **Learning:** HMAC validation requires exact matching of the raw payload and strict checking of cryptographic parameters before API invocation. `express.json` doesn't provide raw buffers by default, so a custom `verify` hook is necessary.
 **Prevention:** Ensure explicit null checks on all secrets passed to `crypto.createHmac()`. Capture and use `req.rawBody` when computing webhook signatures instead of depending on parsed JSON objects. Provide fallback strings to `.update()` to avoid TypeErrors.
+## 2024-07-14 - Fix payment replay attack vulnerability in bot
+**Vulnerability:** Telegram payment handler lacked idempotency checks (replay attack) and ignored Supabase database errors on insertion.
+**Learning:** Always explicitly check for `userData.last_payment_id` against the charge ID and actively throw the `error` object returned from Supabase operations, since Supabase doesn't throw by default on insert/update failures.
+**Prevention:** Enforce idempotency using last payment identifiers and explicitly handle Supabase response errors on all critical endpoints.
