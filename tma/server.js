@@ -341,17 +341,24 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
       // Find user UUID from telegram ID
       const { data: user } = await supabase
         .from('users')
-        .select('id, permanent_credits')
+        .select('id, permanent_credits, last_payment_id')
         .eq('telegram_user_id', userId.toString())
         .single();
         
       if (!user) throw new Error('User not found');
 
+      // 🛡️ Sentinel: Enforce idempotency to prevent replay attacks and duplicate credits
+      if (user.last_payment_id === razorpay_payment_id) {
+        console.log('Payment already processed:', razorpay_payment_id);
+        return res.json({ success: true, message: 'Already processed' });
+      }
+
       const planDetails = getPlanDetails(planId);
       if (!planDetails) throw new Error('Invalid plan');
 
       // Record payment
-      await supabase.from('payments').insert({
+      // 🛡️ Sentinel: Explicitly check for insert error to prevent silent bypass of unique constraints
+      const { error: insertError } = await supabase.from('payments').insert({
         user_id: user.id,
         plan_id: planId,
         amount_inr: planDetails.amount,
@@ -363,21 +370,25 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
         premium_until: planDetails.is_credit ? null : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
       });
 
+      if (insertError) throw new Error(`Payment insertion failed: ${insertError.message}`);
+
       if (planDetails.is_credit) {
         // Add credits
-        await supabase.from('users').update({
+        const { error: updateError } = await supabase.from('users').update({
           permanent_credits: (user.permanent_credits || 0) + planDetails.credits,
           last_payment_id: razorpay_payment_id,
           last_paid_at: new Date().toISOString()
         }).eq('id', user.id);
+        if (updateError) throw new Error(`User update failed: ${updateError.message}`);
       } else {
         // Update subscription
-        await supabase.from('users').update({
+        const { error: updateError } = await supabase.from('users').update({
           plan: planId,
           premium_until: new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString(),
           last_payment_id: razorpay_payment_id,
           last_paid_at: new Date().toISOString()
         }).eq('id', user.id);
+        if (updateError) throw new Error(`User update failed: ${updateError.message}`);
       }
 
       res.json({ success: true });
