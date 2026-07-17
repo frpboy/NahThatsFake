@@ -15,3 +15,7 @@
 ## 2024-06-25 - Native Base64 URL Encoding Performance
 **Learning:** Manual regex replacements after base64 encoding (`Buffer.from(data).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')`) are significantly slower and create more GC garbage than using Node.js's native `base64url` encoding (`Buffer.from(data).toString('base64url')`), which offers up to an 8.4x speedup.
 **Action:** Always use `toString('base64url')` when generating URL-safe base64 strings in Node.js (v14.18+) to optimize performance and reduce memory allocations.
+## 2024-05-19 - Optimizing Sequential Queries with Resource Embedding
+
+**Learning:** When fetching a parent record (e.g. user) and then its related child records (e.g. checks) sequentially, we create unnecessary network roundtrips.
+**Action:** Use Supabase's parent-to-child resource embedding (`.select('id, checks(*)')`) to fetch both in a single query. Use the `foreignTable` option in `.order()` and `.limit()` (e.g., `.limit(10, { foreignTable: 'checks' })`) to apply constraints to the nested data while preserving the original error handling (e.g., returning 404 for a missing user).
