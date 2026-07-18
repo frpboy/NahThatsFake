@@ -339,6 +339,21 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
     // Payment verified
     try {
       // Find user UUID from telegram ID
+      // 🛡️ Sentinel: Idempotency check securely verifies against 'payments' table
+      // instead of relying on updating/reading a single 'last_payment_id' on 'users'.
+      const { data: existingPayment, error: existingPaymentError } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('payment_id', razorpay_payment_id)
+        .maybeSingle();
+
+      if (existingPaymentError) throw existingPaymentError;
+
+      if (existingPayment) {
+        console.log('Payment already processed:', razorpay_payment_id);
+        return res.json({ success: true, message: 'Already processed' });
+      }
+
       const { data: user } = await supabase
         .from('users')
         .select('id, permanent_credits')
@@ -482,19 +497,27 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
         
         if (telegramUserId && planId) {
           // Process fulfillment (duplicate logic from verify endpoint)
+          // 🛡️ Sentinel: Idempotency check securely verifies against 'payments' table
+          const { data: existingPayment, error: existingPaymentError } = await supabase
+            .from('payments')
+            .select('id')
+            .eq('payment_id', payment.id)
+            .maybeSingle();
+
+          if (existingPaymentError) throw existingPaymentError;
+
+          if (existingPayment) {
+            console.log('Payment already processed:', payment.id);
+            return res.json({ status: 'ok' });
+          }
+
           const { data: user } = await supabase
             .from('users')
-            .select('id, permanent_credits, last_payment_id')
+            .select('id, permanent_credits')
             .eq('telegram_user_id', telegramUserId.toString())
             .single();
 
           if (user) {
-            // Idempotency check
-            if (user.last_payment_id === payment.id) {
-               console.log('Payment already processed:', payment.id);
-               return res.json({ status: 'ok' });
-            }
-
             const planDetails = getPlanDetails(planId);
             if (planDetails) {
               // Insert Payment Record
