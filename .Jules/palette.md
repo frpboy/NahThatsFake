@@ -4,3 +4,6 @@
 ## $(date +%Y-%m-%d) - Wrap Decorative Emojis in Buttons
 **Learning:** Screen readers verbosely announce decorative emojis in interactive elements (like buttons), leading to poor UX.
 **Action:** Wrapped emojis in `<span aria-hidden="true">` within buttons and links to hide them from screen readers while keeping them visible visually.
+## 2026-05-18 - Avoid Flash of Empty State (FOES)
+**Learning:** Found that statically placing an empty state ("No checks yet") in HTML causes a Flash of Empty State (FOES) when dynamic content is loading. This creates structural fragility if the list transitions between populated and empty.
+**Action:** Replaced dynamic `innerHTML` empty-state injections with a static loading indicator ("Loading...") and relied on dynamic JavaScript (`app.js`) to render the true empty state or the populated list after data is fetched.
