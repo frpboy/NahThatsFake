@@ -249,17 +249,18 @@ app.get('/api/user/checks', validateTelegramData, async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
     try {
-      const { data: user } = await supabase.from('users').select('id').eq('telegram_user_id', userId.toString()).single();
-      if (!user) return res.status(404).json({ error: 'User not found' });
+      // ⚡ Bolt: Combine sequential DB queries to fetch user and their recent checks in a single round-trip
+      const { data: user } = await supabase
+        .from('users')
+        .select('id, checks(*)')
+        .eq('telegram_user_id', userId.toString())
+        .order('created_at', { ascending: false, referencedTable: 'checks' })
+        .limit(10, { referencedTable: 'checks' })
+        .single();
 
-      const { data: checks } = await supabase
-        .from('checks')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
+      if (!user) return res.status(404).json({ error: 'User not found' });
   
-      res.json({ checks });
+      res.json({ checks: user.checks || [] });
     } catch (error) {
       console.error('Checks error:', error);
       res.status(500).json({ error: 'Failed to fetch checks' });
