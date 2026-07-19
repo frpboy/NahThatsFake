@@ -350,8 +350,22 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
       const planDetails = getPlanDetails(planId);
       if (!planDetails) throw new Error('Invalid plan');
 
+      // 🛡️ Sentinel: Idempotency check before inserting payment
+      const { data: existingPayment, error: existingError } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('payment_id', razorpay_payment_id)
+        .maybeSingle();
+
+      if (existingError) {
+         throw new Error('Database error during idempotency check');
+      }
+      if (existingPayment) {
+         return res.json({ success: true, message: 'Payment already processed' });
+      }
+
       // Record payment
-      await supabase.from('payments').insert({
+      const { error: insertError } = await supabase.from('payments').insert({
         user_id: user.id,
         plan_id: planId,
         amount_inr: planDetails.amount,
@@ -362,6 +376,10 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
         premium_from: new Date().toISOString(),
         premium_until: planDetails.is_credit ? null : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
       });
+
+      if (insertError) {
+         throw new Error('Failed to record payment');
+      }
 
       if (planDetails.is_credit) {
         // Add credits
@@ -489,8 +507,18 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
             .single();
 
           if (user) {
-            // Idempotency check
-            if (user.last_payment_id === payment.id) {
+            // 🛡️ Sentinel: Idempotency check (database-backed instead of user.last_payment_id)
+            const { data: existingPayment, error: existingError } = await supabase
+              .from('payments')
+              .select('id')
+              .eq('payment_id', payment.id)
+              .maybeSingle();
+
+            if (existingError) {
+               console.error('Idempotency check failed:', existingError);
+               return res.status(500).json({ error: 'Database error' });
+            }
+            if (existingPayment) {
                console.log('Payment already processed:', payment.id);
                return res.json({ status: 'ok' });
             }

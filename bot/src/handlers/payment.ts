@@ -59,12 +59,28 @@ export async function handleSuccessfulPayment(ctx: Context) {
       return;
     }
 
+    // 🛡️ Sentinel: Idempotency check before inserting payment
+    const { data: existingPayment, error: existingError } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('payment_id', chargeId)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error('Idempotency check failed:', existingError);
+      return;
+    }
+    if (existingPayment) {
+      console.log('Payment already processed:', chargeId);
+      return;
+    }
+
     // 2. Record payment
     const premiumUntil = planDetails.days 
       ? new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
-    await supabase.from('payments').insert({
+    const { error: insertError } = await supabase.from('payments').insert({
       user_id: userData.id,
       plan_id: planId,
       amount_stars: amountStars,
@@ -74,6 +90,11 @@ export async function handleSuccessfulPayment(ctx: Context) {
       premium_from: new Date().toISOString(),
       premium_until: premiumUntil
     });
+
+    if (insertError) {
+      console.error('Failed to record payment:', insertError);
+      return;
+    }
 
     // 3. Update user
     if (planDetails.credits) {
