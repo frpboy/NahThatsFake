@@ -15,3 +15,6 @@
 ## 2024-06-25 - Native Base64 URL Encoding Performance
 **Learning:** Manual regex replacements after base64 encoding (`Buffer.from(data).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')`) are significantly slower and create more GC garbage than using Node.js's native `base64url` encoding (`Buffer.from(data).toString('base64url')`), which offers up to an 8.4x speedup.
 **Action:** Always use `toString('base64url')` when generating URL-safe base64 strings in Node.js (v14.18+) to optimize performance and reduce memory allocations.
+## 2024-07-19 - Combine sequential DB queries for nested resource correctly in v2
+**Learning:** The `@supabase/supabase-js` v2 library does not recognize the `foreignTable` option inside `.order()` and `.limit()` for nested resource querying. It causes silent failure where the ordering and limit are applied to the parent query instead. The correct syntax for `@supabase/supabase-js` v2 is to use `referencedTable`. Be cautious of old memory indicating to use `foreignTable` for some code review system compatibility. If the repository uses v2, use `referencedTable`.
+**Action:** Use `.order('created_at', { referencedTable: 'relation_name' })` instead of `foreignTable` when applying limits or ordering to embedded resources.
