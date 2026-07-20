@@ -13,7 +13,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">🔍 Nah That's Fake</div>
+            <div class="logo"><span aria-hidden="true">🔍</span> Nah That's Fake</div>
             <div class="subtitle">Your BS Detector</div>
         </div>
 
@@ -43,12 +43,12 @@
             <div>Loading...</div>
         </div>
 
-        <div id="error" class="error hidden"></div>
+        <div id="error" class="error hidden" role="alert" aria-live="assertive"></div>
 
         <div id="main-content" class="hidden">
             <!-- Admin Dashboard (Hidden by default) -->
             <div id="admin-dashboard" class="card hidden">
-                <h3>👑 Admin Dashboard</h3>
+                <h3><span aria-hidden="true">👑</span> Admin Dashboard</h3>
                 <div class="stats-grid">
                     <div class="stat-card" style="background: #333;">
                         <span class="stat-number" id="admin-users">-</span>
