@@ -403,7 +403,42 @@ function showError(message) {
     document.getElementById('loading').classList.add('hidden');
     const errorEl = document.getElementById('error');
     if (errorEl) {
-        errorEl.textContent = message;
+        // Clear previous content to prevent XSS if we were to use innerHTML directly with user input
+        errorEl.textContent = '';
+
+        const messageContainer = document.createElement('div');
+        messageContainer.style.display = 'flex';
+        messageContainer.style.alignItems = 'center';
+        messageContainer.style.gap = '8px';
+
+        const iconSpan = document.createElement('span');
+        iconSpan.setAttribute('aria-hidden', 'true');
+        iconSpan.textContent = '⚠️';
+
+        const textSpan = document.createElement('span');
+        textSpan.textContent = message;
+
+        messageContainer.appendChild(iconSpan);
+        messageContainer.appendChild(textSpan);
+
+        const retryButton = document.createElement('button');
+        retryButton.className = 'button button-secondary';
+        retryButton.style.marginTop = '12px';
+        retryButton.style.marginBottom = '0';
+        retryButton.style.padding = '8px';
+        retryButton.style.fontSize = '14px';
+        retryButton.onclick = () => window.location.reload();
+
+        const btnIconSpan = document.createElement('span');
+        btnIconSpan.setAttribute('aria-hidden', 'true');
+        btnIconSpan.textContent = '🔄 ';
+
+        retryButton.appendChild(btnIconSpan);
+        retryButton.appendChild(document.createTextNode('Try Again'));
+
+        errorEl.appendChild(messageContainer);
+        errorEl.appendChild(retryButton);
+
         errorEl.classList.remove('hidden');
     }
 }
