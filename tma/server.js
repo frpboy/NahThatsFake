@@ -345,6 +345,17 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
   if (timingSafeCompare(generated_signature, razorpay_signature)) {
     // Payment verified
     try {
+      // 🛡️ Sentinel: Fetch authentic order details from Razorpay to prevent planId/userId spoofing
+      const order = await razorpay.orders.fetch(razorpay_order_id);
+      if (!order || !order.notes) {
+        throw new Error('Invalid order structure');
+      }
+
+      const { planId: orderPlanId, telegramUserId: orderUserId } = order.notes;
+      if (orderPlanId !== planId || orderUserId.toString() !== userId.toString()) {
+        throw new Error('Order metadata mismatch - potential spoofing detected');
+      }
+
       // Find user UUID from telegram ID
       const { data: user } = await supabase
         .from('users')
