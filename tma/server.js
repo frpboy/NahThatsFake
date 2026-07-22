@@ -200,17 +200,15 @@ app.get('/api/user/profile', validateTelegramData, async (req, res) => {
   try {
     const { data: user } = await supabase
       .from('users')
-      .select('*')
+      .select('*, checks(count)')
       .eq('telegram_user_id', userId.toString()) // Ensure string comparison
       .single();
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Get check count manually for now
-    const { count: checkCount } = await supabase
-      .from('checks')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id);
+    // ⚡ Bolt: Use resource embedding to fetch user and check count in a single DB round-trip.
+    const checkCount = user.checks && user.checks.length > 0 ? user.checks[0].count : 0;
+    delete user.checks;
 
     res.json({ ...user, total_checks: checkCount });
   } catch (error) {
