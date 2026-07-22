@@ -18,3 +18,6 @@
 ## 2024-07-20 - Combine sequential Supabase queries using resource embedding
 **Learning:** In PostgREST/Supabase, fetching a parent record (like `users`) and then sequentially fetching related child records (like `checks`) adds an unnecessary network round-trip. Using parent-to-child resource embedding (e.g., `select('id, checks(*)')`) combines this into a single query.
 **Action:** Always look for opportunities to combine sequential database queries into a single query using resource embedding when the relationship is correctly defined in the schema. Ensure that modifiers like `.order()` and `.limit()` are applied to the nested resource using `{ referencedTable: '...' }`.
+## 2024-05-24 - Supabase Aggregate Embedding
+**Learning:** In Supabase v2, you can combine parent fetching and aggregate child counting in a single sequential query (e.g., `select('*, checks(count)')`) rather than querying them sequentially. The count returns as an object in an array on the parent (`user.checks[0].count`) and must be unpacked safely.
+**Action:** When calculating statistics for a user/parent resource, always check if resource embedding can fetch both in a single round-trip, maintaining 404 behavior by appending `.single()`.
