@@ -345,6 +345,19 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
   if (timingSafeCompare(generated_signature, razorpay_signature)) {
     // Payment verified
     try {
+      // 🛡️ Sentinel: Fetch the authentic order details from Razorpay to verify metadata
+      const order = await razorpay.orders.fetch(razorpay_order_id);
+      const authenticPlanId = order.notes?.planId;
+      const authenticUserId = order.notes?.telegramUserId;
+
+      if (!authenticPlanId || !authenticUserId) {
+        throw new Error('Order is missing required metadata notes');
+      }
+
+      if (authenticPlanId !== planId || authenticUserId.toString() !== userId.toString()) {
+        throw new Error('Spoofed payment metadata detected');
+      }
+
       // Find user UUID from telegram ID
       const { data: user } = await supabase
         .from('users')
