@@ -403,7 +403,21 @@ function showError(message) {
     document.getElementById('loading').classList.add('hidden');
     const errorEl = document.getElementById('error');
     if (errorEl) {
-        errorEl.textContent = message;
+        errorEl.textContent = ''; // Clear existing content safely
+
+        const messageEl = document.createElement('div');
+        messageEl.textContent = message;
+        messageEl.style.marginBottom = '12px';
+        errorEl.appendChild(messageEl);
+
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'button button-secondary';
+        retryBtn.style.maxWidth = '200px';
+        retryBtn.style.margin = '0 auto';
+        retryBtn.textContent = 'Try Again';
+        retryBtn.onclick = () => window.location.reload();
+        errorEl.appendChild(retryBtn);
+
         errorEl.classList.remove('hidden');
     }
 }
