@@ -404,6 +404,18 @@ function showError(message) {
     const errorEl = document.getElementById('error');
     if (errorEl) {
         errorEl.textContent = message;
+
+        // Add a "Try Again" button for recovery
+        const tryAgainBtn = document.createElement('button');
+        tryAgainBtn.textContent = 'Try Again';
+        tryAgainBtn.className = 'button button-secondary';
+        tryAgainBtn.style.marginTop = '12px';
+        tryAgainBtn.style.maxWidth = '200px';
+        tryAgainBtn.onclick = () => window.location.reload();
+
+        errorEl.appendChild(document.createElement('br'));
+        errorEl.appendChild(tryAgainBtn);
+
         errorEl.classList.remove('hidden');
     }
 }
