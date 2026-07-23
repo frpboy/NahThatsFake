@@ -198,19 +198,18 @@ app.get('/api/user/profile', validateTelegramData, async (req, res) => {
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
   try {
+    // ⚡ Bolt: Fetch user profile and check count concurrently in a single query
+    // using resource embedding to reduce database round-trip latency.
     const { data: user } = await supabase
       .from('users')
-      .select('*')
+      .select('*, checks(count)')
       .eq('telegram_user_id', userId.toString()) // Ensure string comparison
       .single();
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Get check count manually for now
-    const { count: checkCount } = await supabase
-      .from('checks')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id);
+    const checkCount = user.checks && user.checks.length > 0 ? user.checks[0].count : 0;
+    delete user.checks; // Maintain flat API response shape
 
     res.json({ ...user, total_checks: checkCount });
   } catch (error) {
