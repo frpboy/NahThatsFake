@@ -8,12 +8,19 @@ export interface UserCredits {
   isOwner: boolean;
 }
 
-export async function checkCredits(telegramUserId: string): Promise<UserCredits> {
-  const { data: user } = await supabase
-    .from('users')
-    .select('daily_credits, permanent_credits, plan, premium_until, role')
-    .eq('telegram_user_id', telegramUserId)
-    .single();
+export async function checkCredits(
+  telegramUserId: string,
+  cachedUser?: { daily_credits: number, permanent_credits: number, plan: string, premium_until: string | null, role: string } | null
+): Promise<UserCredits> {
+  let user = cachedUser;
+  if (!user) {
+    const { data } = await supabase
+      .from('users')
+      .select('daily_credits, permanent_credits, plan, premium_until, role')
+      .eq('telegram_user_id', telegramUserId)
+      .single();
+    user = data;
+  }
 
   if (!user) {
     return {
@@ -25,7 +32,7 @@ export async function checkCredits(telegramUserId: string): Promise<UserCredits>
   }
 
   const isOwner = user.role === 'owner';
-  const isPremium = user.plan !== 'free' && new Date(user.premium_until) > new Date();
+  const isPremium = Boolean(user.plan !== 'free' && user.premium_until && new Date(user.premium_until) > new Date());
 
   return {
     dailyRemaining: user.daily_credits,
@@ -37,13 +44,18 @@ export async function checkCredits(telegramUserId: string): Promise<UserCredits>
 
 export async function consumeCredit(
   telegramUserId: string,
-  type: 'daily' | 'permanent'
+  type: 'daily' | 'permanent',
+  cachedUser?: { daily_credits: number, permanent_credits: number, plan: string, premium_until: string | null, role: string } | null
 ): Promise<'daily' | 'permanent' | 'premium' | 'owner' | null> {
-  const { data: user } = await supabase
-    .from('users')
-    .select('daily_credits, permanent_credits, plan, premium_until, role')
-    .eq('telegram_user_id', telegramUserId)
-    .single();
+  let user = cachedUser;
+  if (!user) {
+    const { data } = await supabase
+      .from('users')
+      .select('daily_credits, permanent_credits, plan, premium_until, role')
+      .eq('telegram_user_id', telegramUserId)
+      .single();
+    user = data;
+  }
 
   if (!user) return null;
 
@@ -52,7 +64,7 @@ export async function consumeCredit(
   }
 
   // Premium users have unlimited checks
-  if (user.plan !== 'free' && new Date(user.premium_until) > new Date()) {
+  if (user.plan !== 'free' && user.premium_until && new Date(user.premium_until) > new Date()) {
     return 'premium';
   }
 
