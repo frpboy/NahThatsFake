@@ -344,6 +344,26 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
   if (timingSafeCompare(generated_signature, razorpay_signature)) {
     // Payment verified
     try {
+      // 🛡️ Sentinel: Fetch authentic order details from Razorpay to prevent parameter spoofing
+      let order;
+      try {
+        order = await razorpay.orders.fetch(razorpay_order_id);
+      } catch (err) {
+        console.error('Failed to fetch Razorpay order:', err);
+        return res.status(500).json({ error: 'Failed to verify authentic order details' });
+      }
+
+      const securePlanId = order.notes ? order.notes.planId : null;
+      const orderUserId = order.notes ? order.notes.telegramUserId : null;
+
+      if (!securePlanId) {
+         throw new Error('No plan metadata found on authentic order');
+      }
+
+      if (orderUserId && orderUserId.toString() !== userId.toString()) {
+         throw new Error('User ID mismatch in order metadata');
+      }
+
       // Find user UUID from telegram ID
       const { data: user } = await supabase
         .from('users')
@@ -353,7 +373,7 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
         
       if (!user) throw new Error('User not found');
 
-      const planDetails = getPlanDetails(planId);
+      const planDetails = getPlanDetails(securePlanId);
       if (!planDetails) throw new Error('Invalid plan');
 
       // 🛡️ Sentinel: Idempotency check before inserting payment
@@ -373,7 +393,7 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
       // Record payment
       const { error: insertError } = await supabase.from('payments').insert({
         user_id: user.id,
-        plan_id: planId,
+        plan_id: securePlanId,
         amount_inr: planDetails.amount,
         payment_method: 'razorpay',
         payment_id: razorpay_payment_id,
@@ -397,7 +417,7 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
       } else {
         // Update subscription
         await supabase.from('users').update({
-          plan: planId,
+          plan: securePlanId,
           premium_until: new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString(),
           last_payment_id: razorpay_payment_id,
           last_paid_at: new Date().toISOString()
