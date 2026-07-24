@@ -29,3 +29,7 @@
 **Vulnerability:** The Razorpay webhook and Telegram stars payment processing endpoints relied on `user.last_payment_id === payment.id` or lacked idempotency checks altogether. This allowed race conditions and double-processing of payments, as `last_payment_id` only protects against the most recent replay.
 **Learning:** Checking a single string field (`last_payment_id`) for idempotency is insufficient for financial transactions, especially when webhooks can arrive out-of-order or concurrently. It leads to bypasses and potential duplicate credit/subscription grants.
 **Prevention:** Always implement robust, database-backed idempotency checks for payment endpoints. Query the `payments` table for the incoming `payment_id` (e.g., `supabase.from('payments').select('id').eq('payment_id', id).maybeSingle()`) before processing. Explicitly check for and handle database errors during this check to prevent silent failures that bypass the idempotency guard.
+## 2024-05-24 - Prevent Parameter Spoofing in Razorpay Verification
+**Vulnerability:** The Razorpay verification endpoint was trusting the client-provided planId instead of the authentic planId stored in the order notes on the Razorpay server.
+**Learning:** Never trust client-provided entitlement metadata during payment verification if it is not included in the payment gateway's cryptographic signature.
+**Prevention:** Always fetch the authentic order details from the payment provider (e.g., await razorpay.orders.fetch(order_id)) and cross-reference its metadata before fulfilling the order.
