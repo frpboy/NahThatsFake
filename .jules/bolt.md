@@ -21,3 +21,7 @@
 ## 2024-05-31 - Reusing Fetched Objects to Prevent N+1 Queries
 **Learning:** When handlers sequentially call utility functions that fetch user data from the database, it creates redundant latency.
 **Action:** Pass the initially fetched `dbUser` object into utility functions like `checkCredits` and `consumeCredit` to skip redundant DB roundtrips.
+## 2024-07-25 - Redundant Field Fetching When Full Record is Available
+
+**Learning:** When handlers start by fetching a user's entire database record using `select('*')` (e.g., via `getOrCreateUserByTelegram`), making subsequent standalone database queries within the same handler to fetch specific fields like `referral_code` from the same user creates unnecessary network latency and DB load.
+**Action:** Extract specific properties (like `referral_code`) directly from the pre-fetched `dbUser` object using optional chaining (e.g., `dbUser?.referral_code`) rather than running redundant database queries.
