@@ -403,7 +403,20 @@ function showError(message) {
     document.getElementById('loading').classList.add('hidden');
     const errorEl = document.getElementById('error');
     if (errorEl) {
-        errorEl.textContent = message;
+        errorEl.textContent = '';
+
+        const messageNode = document.createTextNode(message);
+        errorEl.appendChild(messageNode);
+
+        errorEl.appendChild(document.createElement('br'));
+        errorEl.appendChild(document.createElement('br'));
+
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'button button-secondary';
+        retryBtn.textContent = 'Try Again';
+        retryBtn.onclick = () => window.location.reload();
+
+        errorEl.appendChild(retryBtn);
         errorEl.classList.remove('hidden');
     }
 }
