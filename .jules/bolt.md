@@ -18,3 +18,6 @@
 ## 2024-07-20 - Combine sequential Supabase queries using resource embedding
 **Learning:** In PostgREST/Supabase, fetching a parent record (like `users`) and then sequentially fetching related child records (like `checks`) adds an unnecessary network round-trip. Using parent-to-child resource embedding (e.g., `select('id, checks(*)')`) combines this into a single query.
 **Action:** Always look for opportunities to combine sequential database queries into a single query using resource embedding when the relationship is correctly defined in the schema. Ensure that modifiers like `.order()` and `.limit()` are applied to the nested resource using `{ referencedTable: '...' }`.
+## 2024-05-31 - Reusing Fetched Objects to Prevent N+1 Queries
+**Learning:** When handlers sequentially call utility functions that fetch user data from the database, it creates redundant latency.
+**Action:** Pass the initially fetched `dbUser` object into utility functions like `checkCredits` and `consumeCredit` to skip redundant DB roundtrips.
