@@ -403,7 +403,22 @@ function showError(message) {
     document.getElementById('loading').classList.add('hidden');
     const errorEl = document.getElementById('error');
     if (errorEl) {
-        errorEl.textContent = message;
+        errorEl.textContent = ''; // clear any existing content
+
+        const msgNode = document.createElement('div');
+        msgNode.textContent = message;
+        errorEl.appendChild(msgNode);
+
+        // Add some space using standard HTML if we can't use inline CSS
+        const br = document.createElement('br');
+        errorEl.appendChild(br);
+
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'button button-secondary';
+        retryBtn.textContent = 'Try Again';
+        retryBtn.onclick = () => window.location.reload();
+
+        errorEl.appendChild(retryBtn);
         errorEl.classList.remove('hidden');
     }
 }

@@ -7,3 +7,6 @@
 ## $(date +%Y-%m-%d) - Error Container Accessibility
 **Learning:** Empty error containers (like `<div id="error"></div>`) that are populated dynamically with JavaScript are not announced by screen readers when their content changes unless they have appropriate ARIA live regions.
 **Action:** Added `role="alert" aria-live="assertive"` to the static HTML error container to ensure screen readers immediately announce dynamically injected error messages to the user.
+## 2026-05-08 - Actionable Recovery in Error States
+**Learning:** Found that dynamic error messages did not offer users a way to recover, leading to a dead end UI.
+**Action:** Enhanced `showError` to include an actionable "Try Again" button using safe DOM manipulation (`document.createElement` and `textContent`).
