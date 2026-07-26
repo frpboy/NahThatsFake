@@ -10,3 +10,6 @@
 ## 2024-05-19 - Added Actionable Recovery Step to Error State
 **Learning:** For frontend applications fetching state, dynamically injected error states lacking recovery steps (like a "Try Again" reload button) can leave users stuck, especially since empty states can be hard to escape natively in embedded miniapps without hard refreshes. Constructing complex DOM elements programmatically via `document.createElement` prevents XSS while maintaining clean markup without inline CSS hacks.
 **Action:** When adding error state components, explicitly include user-facing actions to retry or recover, constructed using safe DOM manipulation primitives rather than `innerHTML`.
+## 2026-07-26 - Fix Flash of Empty State for recent checks
+**Learning:** Hardcoding empty states statically in HTML causes a "Flash of Empty State" (FOES) before data is fetched in vanilla JS apps, creating a confusing UX.
+**Action:** Default static HTML to generic loading states and inject empty state UI purely dynamically after data fetching completes.
