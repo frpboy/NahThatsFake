@@ -10,3 +10,6 @@
 ## 2024-05-19 - Added Actionable Recovery Step to Error State
 **Learning:** For frontend applications fetching state, dynamically injected error states lacking recovery steps (like a "Try Again" reload button) can leave users stuck, especially since empty states can be hard to escape natively in embedded miniapps without hard refreshes. Constructing complex DOM elements programmatically via `document.createElement` prevents XSS while maintaining clean markup without inline CSS hacks.
 **Action:** When adding error state components, explicitly include user-facing actions to retry or recover, constructed using safe DOM manipulation primitives rather than `innerHTML`.
+## 2024-05-18 - Missing ARIA attributes for dynamically injected errors
+**Learning:** Found an error container in `index.html` that had `role="alert"` and `aria-live="assertive"` initially, but `premium.html` has an error/status container without these initial attributes (`<div id="status-message" class="hidden"></div>`). The JS sets these dynamically later on, but it's better for accessibility if the container has these statically in HTML or at least ensures screen readers are aware of it properly.
+**Action:** Enhance accessibility by ensuring status/error messages are properly announced.
