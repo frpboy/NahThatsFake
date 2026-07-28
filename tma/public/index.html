@@ -13,8 +13,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo"><span aria-hidden="true">🔍</span> Nah That's Fake</div>
-            <div class="subtitle">Your BS Detector</div>
+            <h1 class="logo"><span aria-hidden="true">🔍</span> Nah That's Fake</h1>
+            <h2 class="subtitle">Your BS Detector</h2>
         </div>
 
         <div id="login-widget" class="hidden">
@@ -39,8 +39,8 @@
             </div>
         </div>
 
-        <div id="loading" class="loading">
-            <div>Loading...</div>
+        <div id="loading" class="loading" role="status" aria-label="Loading app data">
+            <div><span aria-hidden="true">⏳</span> Loading...</div>
         </div>
 
         <div id="error" class="error hidden" role="alert" aria-live="assertive"></div>

@@ -339,7 +339,7 @@ async function loadMoreChecks() {
     if (btn) {
         btn.disabled = true;
         btn.setAttribute('aria-busy', 'true');
-        btn.innerHTML = '⏳ Loading...';
+        btn.innerHTML = '<span aria-hidden="true">⏳</span> Loading...';
     }
 
     try {
