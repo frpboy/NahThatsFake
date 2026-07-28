@@ -10,3 +10,6 @@
 ## 2024-05-19 - Added Actionable Recovery Step to Error State
 **Learning:** For frontend applications fetching state, dynamically injected error states lacking recovery steps (like a "Try Again" reload button) can leave users stuck, especially since empty states can be hard to escape natively in embedded miniapps without hard refreshes. Constructing complex DOM elements programmatically via `document.createElement` prevents XSS while maintaining clean markup without inline CSS hacks.
 **Action:** When adding error state components, explicitly include user-facing actions to retry or recover, constructed using safe DOM manipulation primitives rather than `innerHTML`.
+## 2024-05-19 - Semantic Headings in App Views
+**Learning:** Single-page app views and embedded widgets often lack a root `<h1>` element, which degrades the document outline and navigation for screen reader users. Simply styling `div` elements to look large does not convey structural meaning.
+**Action:** Converted main brand elements (`.logo`, `.subtitle`) to semantic `<h1>` and `<h2>` tags to establish a clear header hierarchy without altering the visual design.
