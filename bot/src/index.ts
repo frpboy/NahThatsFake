@@ -1428,6 +1428,35 @@ bot.on('message:document', async (ctx) => {
     return;
   }
 
+  // Check consent first (bypass for admins)
+  const isUserAdmin = await isAdmin(user.id.toString(), (ctx as any).state?.role);
+
+  if (!isUserAdmin) {
+    const { data: userData } = await supabase
+      .from('users')
+      .select('consent_given')
+      .eq('telegram_user_id', user.id.toString())
+      .single();
+
+    if (!userData?.consent_given) {
+      await ctx.reply(`⚠️ *Consent Required*
+
+I need your consent to process images. This helps us comply with privacy regulations.
+
+By continuing, you agree to our terms of service and privacy policy.
+
+✅ Tap "I Agree" to continue:`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '✅ I Agree', callback_data: 'consent_agree' }
+          ]]
+        }
+      });
+      return;
+    }
+  }
+
   await processImageCheck(ctx);
 });
 
