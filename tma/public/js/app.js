@@ -339,7 +339,7 @@ async function loadMoreChecks() {
     if (btn) {
         btn.disabled = true;
         btn.setAttribute('aria-busy', 'true');
-        btn.innerHTML = '⏳ Loading...';
+        btn.innerHTML = '<span aria-hidden="true">⏳</span> Loading...';
     }
 
     try {
@@ -405,6 +405,11 @@ function showError(message) {
     if (errorEl) {
         errorEl.textContent = '';
 
+        const iconSpan = document.createElement('span');
+        iconSpan.setAttribute('aria-hidden', 'true');
+        iconSpan.textContent = '⚠️ ';
+        errorEl.appendChild(iconSpan);
+
         const messageNode = document.createTextNode(message);
         errorEl.appendChild(messageNode);
 
@@ -413,7 +418,7 @@ function showError(message) {
 
         const retryBtn = document.createElement('button');
         retryBtn.className = 'button button-secondary';
-        retryBtn.textContent = 'Try Again';
+        retryBtn.innerHTML = '<span aria-hidden="true">🔄</span> Try Again';
         retryBtn.onclick = () => window.location.reload();
 
         errorEl.appendChild(retryBtn);
