@@ -25,3 +25,7 @@
 
 **Learning:** When handlers start by fetching a user's entire database record using `select('*')` (e.g., via `getOrCreateUserByTelegram`), making subsequent standalone database queries within the same handler to fetch specific fields like `referral_code` from the same user creates unnecessary network latency and DB load.
 **Action:** Extract specific properties (like `referral_code`) directly from the pre-fetched `dbUser` object using optional chaining (e.g., `dbUser?.referral_code`) rather than running redundant database queries.
+
+## 2025-02-12 - Concurrent Supabase Queries
+**Learning:** Found multiple independent Supabase count queries (`users` and `checks`) being executed sequentially using `await supabase...` sequentially in a command handler.
+**Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
