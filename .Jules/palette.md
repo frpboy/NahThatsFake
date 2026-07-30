@@ -16,3 +16,6 @@
 ## 2024-05-24 - Accessible Error States
 **Learning:** Emojis injected dynamically into error/loading states need `aria-hidden="true"` just as much as static HTML emojis to prevent screen readers from reading them out verbosely during critical status updates.
 **Action:** Always wrap emojis in `<span aria-hidden="true">` when dynamically creating UI elements like buttons or alerts in JS.
+## 2024-05-24 - Actionable Localized Error States
+**Learning:** When a nested async component (like a list of recent checks) fails to load, showing a static error message leaves the user stuck. Implementing localized, actionable recovery steps (like a "Try Again" button) using safe DOM manipulation prevents user frustration and avoids the need for a full app reload.
+**Action:** Always provide localized retry mechanisms for independent async UI components, avoiding `innerHTML` when creating dynamic interactive elements to ensure security and accessibility.

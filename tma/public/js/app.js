@@ -276,7 +276,41 @@ async function loadChecks() {
     } catch (error) {
         console.error('Failed to load checks:', error);
         if (currentPage === 1) {
-            document.getElementById('recent-checks').innerHTML = '<div class="loading">Unable to load checks</div>';
+            const container = document.getElementById('recent-checks');
+            container.textContent = '';
+
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'loading';
+            errorDiv.setAttribute('role', 'alert');
+            errorDiv.setAttribute('aria-live', 'assertive');
+
+            const iconDiv = document.createElement('div');
+            iconDiv.setAttribute('aria-hidden', 'true');
+            iconDiv.style.fontSize = '2rem';
+            iconDiv.style.marginBottom = '8px';
+            iconDiv.textContent = '⚠️';
+            errorDiv.appendChild(iconDiv);
+
+            const msgP = document.createElement('p');
+            msgP.style.marginBottom = '16px';
+            msgP.textContent = 'Unable to load checks.';
+            errorDiv.appendChild(msgP);
+
+            const retryBtn = document.createElement('button');
+            retryBtn.className = 'button button-secondary';
+            retryBtn.style.maxWidth = '200px';
+            retryBtn.style.margin = '0 auto';
+
+            const btnIcon = document.createElement('span');
+            btnIcon.setAttribute('aria-hidden', 'true');
+            btnIcon.textContent = '🔄 ';
+            retryBtn.appendChild(btnIcon);
+
+            retryBtn.appendChild(document.createTextNode('Try Again'));
+            retryBtn.onclick = () => loadChecks();
+
+            errorDiv.appendChild(retryBtn);
+            container.appendChild(errorDiv);
         }
     }
 }
