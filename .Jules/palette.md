@@ -13,3 +13,6 @@
 ## 2024-05-18 - Missing ARIA attributes for dynamically injected errors
 **Learning:** Found an error container in `index.html` that had `role="alert"` and `aria-live="assertive"` initially, but `premium.html` has an error/status container without these initial attributes (`<div id="status-message" class="hidden"></div>`). The JS sets these dynamically later on, but it's better for accessibility if the container has these statically in HTML or at least ensures screen readers are aware of it properly.
 **Action:** Enhance accessibility by ensuring status/error messages are properly announced.
+## 2024-05-24 - Accessible Error States
+**Learning:** Emojis injected dynamically into error/loading states need `aria-hidden="true"` just as much as static HTML emojis to prevent screen readers from reading them out verbosely during critical status updates.
+**Action:** Always wrap emojis in `<span aria-hidden="true">` when dynamically creating UI elements like buttons or alerts in JS.
