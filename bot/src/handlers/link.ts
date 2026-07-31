@@ -133,9 +133,12 @@ export async function processLinkCheck(ctx: Context) {
     const shareLink = `https://t.me/${botUsername}?start=${refCode}`;
     const shareText = `I just checked this link with @${botUsername}!\n\nLink: ${url}\nResult: ${riskEmoji} ${result.risk_level} (${scorePercent}% Risk)\n\nCheck yours here: ${shareLink}`;
 
+    // 🛡️ Sentinel: Sanitize URL to prevent Markdown injection/breakage from unescaped backticks
+    const displayUrl = url.replace(/`/g, '%60');
+
     await ctx.reply(`${riskEmoji} *Link Check Result*
 
-URL: \`${url}\`
+URL: \`${displayUrl}\`
 Risk Level: *${result.risk_level}*
 Threat Probability: *${scorePercent}%*
 
