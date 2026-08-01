@@ -1,10 +1,10 @@
 ## 2026-05-07 - Async Button State Improvements
 **Learning:** Found that long-running network requests (like loading paginated check history) lack visual feedback during the loading phase. This can cause duplicate submissions and confusion.
 **Action:** Implemented a standard async loading state for the 'Load More' button that disables the button, updates text to 'Loading...', and adds `aria-busy="true"`. Also introduced `.button:disabled` states in CSS to ensure the UI clearly reflects when buttons are inactive.
-## $(date +%Y-%m-%d) - Wrap Decorative Emojis in Buttons
+## 2026-08-01 - Wrap Decorative Emojis in Buttons
 **Learning:** Screen readers verbosely announce decorative emojis in interactive elements (like buttons), leading to poor UX.
 **Action:** Wrapped emojis in `<span aria-hidden="true">` within buttons and links to hide them from screen readers while keeping them visible visually.
-## $(date +%Y-%m-%d) - Error Container Accessibility
+## 2026-08-01 - Error Container Accessibility
 **Learning:** Empty error containers (like `<div id="error"></div>`) that are populated dynamically with JavaScript are not announced by screen readers when their content changes unless they have appropriate ARIA live regions.
 **Action:** Added `role="alert" aria-live="assertive"` to the static HTML error container to ensure screen readers immediately announce dynamically injected error messages to the user.
 ## 2024-05-19 - Added Actionable Recovery Step to Error State
@@ -19,3 +19,6 @@
 ## 2024-05-24 - Actionable Localized Error States
 **Learning:** When a nested async component (like a list of recent checks) fails to load, showing a static error message leaves the user stuck. Implementing localized, actionable recovery steps (like a "Try Again" button) using safe DOM manipulation prevents user frustration and avoids the need for a full app reload.
 **Action:** Always provide localized retry mechanisms for independent async UI components, avoiding `innerHTML` when creating dynamic interactive elements to ensure security and accessibility.
+## 2026-08-01 - [Contextual ARIA Labels for Pricing Buttons]
+**Learning:** Repetitive action buttons in pricing tiers (e.g., "Pay ₹29", "Pay 150 Stars") lack context when read in isolation by screen readers.
+**Action:** Always provide full contextual `aria-label`s (e.g., "Pay ₹29 for Weekly Pass") for buttons in repeated, structurally identical cards.
