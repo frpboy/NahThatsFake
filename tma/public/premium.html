@@ -86,33 +86,33 @@
         <div class="plan-card">
             <div class="plan-header">
                 <span class="plan-title">Weekly Pass</span>
-                <span class="plan-price">₹29 / 150 ⭐</span>
+                <span class="plan-price">₹29 / 150 <span aria-hidden="true">⭐</span></span>
             </div>
             <div class="plan-desc">Unlimited checks for 7 days. Perfect for quick needs.</div>
-            <button class="btn" onclick="payRazorpay('ind_weekly', 2900)">Pay ₹29 (UPI/Card)</button>
-            <button class="btn btn-stars" onclick="payStars('ind_weekly', 150)">Pay 150 Stars</button>
+            <button class="btn" onclick="payRazorpay(this, 'ind_weekly', 2900)">Pay ₹29 (UPI/Card)</button>
+            <button class="btn btn-stars" onclick="payStars(this, 'ind_weekly', 150)">Pay 150 Stars</button>
         </div>
 
         <!-- Monthly Plan -->
         <div class="plan-card">
             <div class="plan-header">
                 <span class="plan-title">Monthly</span>
-                <span class="plan-price">₹99 / 500 ⭐</span>
+                <span class="plan-price">₹99 / 500 <span aria-hidden="true">⭐</span></span>
             </div>
             <div class="plan-desc">Unlimited checks for 30 days. Most popular.</div>
-            <button class="btn" onclick="payRazorpay('ind_monthly', 9900)">Pay ₹99 (UPI/Card)</button>
-            <button class="btn btn-stars" onclick="payStars('ind_monthly', 500)">Pay 500 Stars</button>
+            <button class="btn" onclick="payRazorpay(this, 'ind_monthly', 9900)">Pay ₹99 (UPI/Card)</button>
+            <button class="btn btn-stars" onclick="payStars(this, 'ind_monthly', 500)">Pay 500 Stars</button>
         </div>
 
         <!-- Annual Plan -->
         <div class="plan-card">
             <div class="plan-header">
                 <span class="plan-title">Annual (Best Value)</span>
-                <span class="plan-price">₹799 / 4000 ⭐</span>
+                <span class="plan-price">₹799 / 4000 <span aria-hidden="true">⭐</span></span>
             </div>
             <div class="plan-desc">Unlimited checks for 365 days. Save 33%!</div>
-            <button class="btn" onclick="payRazorpay('ind_annual', 79900)">Pay ₹799 (UPI/Card)</button>
-            <button class="btn btn-stars" onclick="payStars('ind_annual', 4000)">Pay 4000 Stars</button>
+            <button class="btn" onclick="payRazorpay(this, 'ind_annual', 79900)">Pay ₹799 (UPI/Card)</button>
+            <button class="btn btn-stars" onclick="payStars(this, 'ind_annual', 4000)">Pay 4000 Stars</button>
         </div>
 
         <div class="section-title">Credit Packs (No Expiry)</div>
@@ -121,22 +121,22 @@
         <div class="plan-card">
             <div class="plan-header">
                 <span class="plan-title">50 Credits</span>
-                <span class="plan-price">₹49 / 250 ⭐</span>
+                <span class="plan-price">₹49 / 250 <span aria-hidden="true">⭐</span></span>
             </div>
             <div class="plan-desc">Add 50 permanent checks. Never expires.</div>
-            <button class="btn" onclick="payRazorpay('credits_50', 4900)">Pay ₹49 (UPI/Card)</button>
-            <button class="btn btn-stars" onclick="payStars('credits_50', 250)">Pay 250 Stars</button>
+            <button class="btn" onclick="payRazorpay(this, 'credits_50', 4900)">Pay ₹49 (UPI/Card)</button>
+            <button class="btn btn-stars" onclick="payStars(this, 'credits_50', 250)">Pay 250 Stars</button>
         </div>
 
          <!-- Credit Pack 100 -->
          <div class="plan-card">
             <div class="plan-header">
                 <span class="plan-title">100 Credits</span>
-                <span class="plan-price">₹89 / 450 ⭐</span>
+                <span class="plan-price">₹89 / 450 <span aria-hidden="true">⭐</span></span>
             </div>
             <div class="plan-desc">Add 100 permanent checks. Best value pack.</div>
-            <button class="btn" onclick="payRazorpay('credits_100', 8900)">Pay ₹89 (UPI/Card)</button>
-            <button class="btn btn-stars" onclick="payStars('credits_100', 450)">Pay 450 Stars</button>
+            <button class="btn" onclick="payRazorpay(this, 'credits_100', 8900)">Pay ₹89 (UPI/Card)</button>
+            <button class="btn btn-stars" onclick="payStars(this, 'credits_100', 450)">Pay 450 Stars</button>
         </div>
 
         <div id="status-message" class="hidden" role="alert" aria-live="assertive"></div>
@@ -149,7 +149,16 @@
         const user = tg.initDataUnsafe?.user;
         const userId = user ? user.id : null;
 
-        function setPaymentProcessing(isProcessing) {
+        let activePaymentBtn = null;
+        let originalBtnHTML = '';
+
+        function setPaymentProcessing(isProcessing, clickedBtn = null) {
+            if (isProcessing && clickedBtn) {
+                activePaymentBtn = clickedBtn;
+                originalBtnHTML = clickedBtn.innerHTML;
+                clickedBtn.innerHTML = '<span aria-hidden="true">⏳</span> Processing...';
+            }
+
             const buttons = document.querySelectorAll('.btn');
             buttons.forEach(btn => {
                 btn.disabled = isProcessing;
@@ -159,13 +168,18 @@
                     btn.removeAttribute('aria-busy');
                 }
             });
+
+            if (!isProcessing && activePaymentBtn) {
+                activePaymentBtn.innerHTML = originalBtnHTML;
+                activePaymentBtn = null;
+            }
         }
 
         // 1. Telegram Stars Payment
-        function payStars(planId, amount) {
+        function payStars(btn, planId, amount) {
             if (!userId) return alert("Please open from Telegram");
             
-            setPaymentProcessing(true);
+            setPaymentProcessing(true, btn);
             setStatus("Creating Stars invoice...", false);
             
             fetch('/api/payment/create-stars-invoice', {
@@ -200,10 +214,10 @@
         }
 
         // 2. Razorpay Payment
-        function payRazorpay(planId, amountPaise) {
+        function payRazorpay(btn, planId, amountPaise) {
             if (!userId) return alert("Please open from Telegram");
             
-            setPaymentProcessing(true);
+            setPaymentProcessing(true, btn);
             setStatus("Creating Razorpay order...", false);
 
             fetch('/api/payment/create-razorpay-order', {
