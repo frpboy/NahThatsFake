@@ -19,3 +19,6 @@
 ## 2024-05-24 - Actionable Localized Error States
 **Learning:** When a nested async component (like a list of recent checks) fails to load, showing a static error message leaves the user stuck. Implementing localized, actionable recovery steps (like a "Try Again" button) using safe DOM manipulation prevents user frustration and avoids the need for a full app reload.
 **Action:** Always provide localized retry mechanisms for independent async UI components, avoiding `innerHTML` when creating dynamic interactive elements to ensure security and accessibility.
+## 2024-05-24 - Visual Loading States for List Actions
+**Learning:** When multiple action buttons exist in a list or grid (like payment options), applying a generic `disabled` state to all buttons without a clear loading indicator on the explicitly clicked button leaves users confused about which action is processing.
+**Action:** Always capture the clicked button (e.g., passing `this` from inline handlers) and temporarily replace its content with an explicit loading state (`aria-hidden` icon + "Processing...") while applying `aria-busy="true"` and `disabled` to all buttons in the group.
