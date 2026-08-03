@@ -37,3 +37,7 @@
 **Vulnerability:** The Telegram Bot processed document messages (uncompressed images sent as files) via `bot.on('message:document')` but bypassed the required privacy consent check entirely, unlike `bot.on('message:photo')`. This allowed users to circumvent the privacy consent prompt required for image processing by simply sending images as documents.
 **Learning:** Re-using identical logic across multiple message event handlers without extracting authorization or consent validation to a shared middleware/function easily leads to security and privacy bypasses.
 **Prevention:** Consolidate required pre-processing checks (like user authentication, consent validation, rate limiting) into reusable middleware functions rather than duplicating logic across individual event handlers.
+## 2024-08-03 - Prevent Telegram Markdown Injection DoS
+**Vulnerability:** User-provided URLs were interpolated directly into MarkdownV2/Markdown code blocks in bot replies without escaping backticks. A malicious URL with backticks causes Telegram to return `400 Bad Request: can't parse entities`, preventing the bot from responding and potentially causing a localized DoS.
+**Learning:** Always sanitize or escape user-provided strings (especially URLs) when embedding them in Markdown code blocks for Telegram messages.
+**Prevention:** Replace backticks (`\``) with their URL-encoded equivalent (`%60`) or use proper escaping mechanisms before interpolating user data into Telegram message templates.
