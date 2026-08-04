@@ -66,9 +66,15 @@
             cursor: pointer;
             width: 100%;
             margin-top: 8px;
+            transition: opacity 0.2s ease, filter 0.2s ease;
         }
         .btn-stars { background: #FFD700; color: #000; }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        @media (hover: hover) {
+            .btn:not(:disabled):hover {
+                filter: brightness(0.9);
+            }
+        }
         .btn:focus-visible { outline: 2px solid var(--tg-theme-button-color); outline-offset: 2px; }
         
         .hidden { display: none; }
