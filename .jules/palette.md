@@ -13,3 +13,6 @@
 ## 2024-10-25 - Contextual ARIA labels on payment buttons
 **Learning:** Generic button text like "Pay ₹29" creates a poor experience for screen reader users navigating by interactive elements, as they lose the context of the plan name.
 **Action:** Always add descriptive `aria-label`s to payment buttons that include the item being purchased.
+## 2024-10-25 - Semantic Heading Hierarchy
+**Learning:** Using `div`s for section titles (e.g., `<div class="section-title">`) or skipping heading levels (e.g., jumping from `h1` directly to `h3`) breaks the document outline. This makes it difficult for screen reader users to navigate the page structure efficiently.
+**Action:** Always use semantic HTML heading tags (`h1` through `h6`) in a logical, sequential order to create a clear document outline. Avoid skipping levels for styling purposes.
