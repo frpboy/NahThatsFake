@@ -13,3 +13,6 @@
 ## 2024-10-25 - Contextual ARIA labels on payment buttons
 **Learning:** Generic button text like "Pay ₹29" creates a poor experience for screen reader users navigating by interactive elements, as they lose the context of the plan name.
 **Action:** Always add descriptive `aria-label`s to payment buttons that include the item being purchased.
+## 2024-05-24 - Native Tooltips for Icon Buttons
+**Learning:** When adding custom CSS tooltips is restricted or overkill, users on desktop/web can still benefit from hover context on icon-heavy buttons.
+**Action:** Always add standard HTML `title` attributes to buttons with icons to provide native browser tooltips for extra context.
