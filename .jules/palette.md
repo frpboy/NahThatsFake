@@ -13,3 +13,6 @@
 ## 2024-10-25 - Contextual ARIA labels on payment buttons
 **Learning:** Generic button text like "Pay ₹29" creates a poor experience for screen reader users navigating by interactive elements, as they lose the context of the plan name.
 **Action:** Always add descriptive `aria-label`s to payment buttons that include the item being purchased.
+## 2024-08-07 - Balanced CSS Grid Layouts
+**Learning:** When using 2-column grids (like .stats-grid), having an odd number of items causes the last item to hang on the left, looking broken.
+**Action:** Use .stats-grid > .stat-card:last-child:nth-child(odd) { grid-column: 1 / -1; } to make the trailing item span the full width.
