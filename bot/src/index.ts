@@ -432,10 +432,11 @@ bot.command('top', async (ctx) => {
     return ctx.reply('No data yet.');
   }
 
+  const escapeMarkdown = (text: string) => text.replace(/([_*`\[\]])/g, '\\$1');
   let text = '🏆 *Referral Leaderboard*\n\n';
   topUsers.forEach((u, i) => {
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-    text += `${medal} ${u.first_name || 'User'} - ${u.referral_count || 0} invites\n`;
+    text += `${medal} ${escapeMarkdown(u.first_name || 'User')} - ${u.referral_count || 0} invites\n`;
   });
 
   await ctx.reply(text, { parse_mode: 'Markdown' });
