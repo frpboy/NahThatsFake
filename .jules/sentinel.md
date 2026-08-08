@@ -41,3 +41,7 @@
 **Vulnerability:** User-provided URLs were interpolated directly into MarkdownV2/Markdown code blocks in bot replies without escaping backticks. A malicious URL with backticks causes Telegram to return `400 Bad Request: can't parse entities`, preventing the bot from responding and potentially causing a localized DoS.
 **Learning:** Always sanitize or escape user-provided strings (especially URLs) when embedding them in Markdown code blocks for Telegram messages.
 **Prevention:** Replace backticks (`\``) with their URL-encoded equivalent (`%60`) or use proper escaping mechanisms before interpolating user data into Telegram message templates.
+## 2025-02-21 - Markdown Injection DoS in Bot Commands
+**Vulnerability:** User-provided strings (like `first_name`) were interpolated directly into Markdown code blocks in bot replies without escaping legacy Markdown characters. A malicious string with unmatched characters causes Telegram to return `400 Bad Request: can't parse entities`, preventing the bot from responding and potentially causing a localized DoS (e.g. breaking the `/top` command leaderboard for everyone).
+**Learning:** Always sanitize or escape user-provided strings when embedding them in Markdown code blocks for Telegram messages.
+**Prevention:** Replace legacy Markdown characters (`_`, `*`, `` ` ``, `[`, `]`) with their escaped equivalents (`\\_`, etc.) or use proper escaping mechanisms before interpolating user data into Telegram message templates.
