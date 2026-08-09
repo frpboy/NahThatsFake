@@ -13,7 +13,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo"><span aria-hidden="true">🔍</span> Nah That's Fake</div>
+            <h1 class="logo"><span aria-hidden="true">🔍</span> Nah That's Fake</h1>
             <div class="subtitle">Your BS Detector</div>
         </div>
 
@@ -49,7 +49,7 @@
         <div id="main-content" class="hidden">
             <!-- Admin Dashboard (Hidden by default) -->
             <div id="admin-dashboard" class="card hidden">
-                <h3><span aria-hidden="true">👑</span> Admin Dashboard</h3>
+                <h2><span aria-hidden="true">👑</span> Admin Dashboard</h2>
                 <div class="stats-grid">
                     <div class="stat-card" style="background: #333;">
                         <span class="stat-number" id="admin-users">-</span>
@@ -69,7 +69,7 @@
                     </div>
                 </div>
                 
-                <h4>Admin Actions</h4>
+                <h3>Admin Actions</h3>
                 <button class="button" onclick="adminBroadcast()"><span aria-hidden="true">📢</span> Broadcast Message</button>
                 <button class="button button-secondary" onclick="adminViewLogs()"><span aria-hidden="true">📜</span> View Audit Logs</button>
             </div>
@@ -92,7 +92,7 @@
 
             <!-- User Info -->
             <div class="card">
-                <h3>Your Account</h3>
+                <h2>Your Account</h2>
                 <div id="user-info">
                     <p><strong>Plan:</strong> <span id="user-plan">Free</span></p>
                     <p><strong>Username:</strong> <span id="user-username">-</span></p>
@@ -102,7 +102,7 @@
 
             <!-- Recent Checks -->
             <div class="card">
-                <h3>Recent Checks</h3>
+                <h2>Recent Checks</h2>
                 <div id="recent-checks" aria-live="polite">
                     <div class="loading" role="status">
                         <div aria-hidden="true" style="font-size: 2rem; margin-bottom: 8px;">🕵️</div>
@@ -116,7 +116,7 @@
 
             <!-- Actions -->
             <div class="card">
-                <h3>Quick Actions</h3>
+                <h2>Quick Actions</h2>
                 <button class="button" onclick="shareReferral()"><span aria-hidden="true">🎁</span> Share & Earn Credits</button>
                 <button class="button" onclick="upgradePremium()"><span aria-hidden="true">⭐</span> Upgrade to Premium</button>
                 <button class="button button-secondary" onclick="openBot()"><span aria-hidden="true">🤖</span> Open Bot Chat</button>
