@@ -12,10 +12,10 @@
 </head>
 <body>
     <div class="container">
-        <div class="header">
+        <header class="header">
             <h1 class="logo"><span aria-hidden="true">🔍</span> Nah That's Fake</h1>
             <div class="subtitle">Your BS Detector</div>
-        </div>
+        </header>
 
         <div id="login-widget" class="hidden">
             <script async src="https://telegram.org/js/telegram-widget.js?22" 
@@ -46,7 +46,7 @@
 
         <div id="error" class="error hidden" role="alert" aria-live="assertive"></div>
 
-        <div id="main-content" class="hidden">
+        <main id="main-content" class="hidden">
             <!-- Admin Dashboard (Hidden by default) -->
             <div id="admin-dashboard" class="card hidden">
                 <h2><span aria-hidden="true">👑</span> Admin Dashboard</h2>
@@ -121,7 +121,7 @@
                 <button class="button" onclick="upgradePremium()"><span aria-hidden="true">⭐</span> Upgrade to Premium</button>
                 <button class="button button-secondary" onclick="openBot()"><span aria-hidden="true">🤖</span> Open Bot Chat</button>
             </div>
-        </div>
+        </main>
     </div>
 
     <script src="js/app.js"></script>

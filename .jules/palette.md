@@ -16,3 +16,6 @@
 ## 2024-10-25 - Semantic Heading Hierarchy
 **Learning:** Using `div`s for section titles (e.g., `<div class="section-title">`) or skipping heading levels (e.g., jumping from `h1` directly to `h3`) breaks the document outline. This makes it difficult for screen reader users to navigate the page structure efficiently.
 **Action:** Always use semantic HTML heading tags (`h1` through `h6`) in a logical, sequential order to create a clear document outline. Avoid skipping levels for styling purposes.
+## 2026-11-20 - Semantic HTML Landmarks and Heading Hierarchy
+**Learning:** Generic `div` elements lacking semantic roles (e.g., `<div class="header">`, `<div id="main-content">`) fail to create accessible document landmarks. Similarly, omitting heading levels (e.g., jumping from `h2` to `span` instead of `h3`) breaks the document outline. This significantly degrades the experience for screen reader users who rely on landmarks (like `<header>` and `<main>`) and correct heading hierarchies to navigate effectively.
+**Action:** Always prefer native semantic tags (`<header>`, `<main>`, `<nav>`) over `div`s. Ensure heading tags (`h1`-`h6`) are strictly sequential. When converting inline elements (like `<span>`) to block headings (like `<h3>`) within strict layouts (like flexbox), apply `margin: 0;` to prevent layout regressions.
