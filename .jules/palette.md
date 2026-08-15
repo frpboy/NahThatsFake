@@ -16,3 +16,6 @@
 ## 2024-10-25 - Semantic Heading Hierarchy
 **Learning:** Using `div`s for section titles (e.g., `<div class="section-title">`) or skipping heading levels (e.g., jumping from `h1` directly to `h3`) breaks the document outline. This makes it difficult for screen reader users to navigate the page structure efficiently.
 **Action:** Always use semantic HTML heading tags (`h1` through `h6`) in a logical, sequential order to create a clear document outline. Avoid skipping levels for styling purposes.
+## 2024-08-15 - Semantic Headings in Flexbox Layouts
+**Learning:** Replacing inline elements (like `<span>`) with heading elements (like `<h3>`) inside flexbox layouts improves semantic accessibility but can break visual layouts due to default heading margins.
+**Action:** Always explicitly reset default margins (e.g., `margin: 0;`) on new headings to preserve layout structure inside flex/grid containers.
