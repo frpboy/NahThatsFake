@@ -22,3 +22,7 @@
 ## 2024-08-04 - Improve Risk Badge Contrast
 **Learning:** Default Material Design 500-level colors on 10% opacity backgrounds fail WCAG AA contrast for text.
 **Action:** Use 700-level colors for light mode and keep 300-level or 500-level for dark mode to ensure text is readable.
+
+## 2024-08-16 - Balance Odd-Numbered Grid Items
+**Learning:** In CSS grids with `repeat(2, 1fr)`, having an odd number of items (like 3) leaves a visual hole in the second row, which looks unbalanced.
+**Action:** Always span the last item across the remaining columns (e.g., `grid-column: span 2;`) to maintain visual symmetry and balance.
