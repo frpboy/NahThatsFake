@@ -22,3 +22,6 @@
 ## 2024-08-04 - Improve Risk Badge Contrast
 **Learning:** Default Material Design 500-level colors on 10% opacity backgrounds fail WCAG AA contrast for text.
 **Action:** Use 700-level colors for light mode and keep 300-level or 500-level for dark mode to ensure text is readable.
+## $(date +%Y-%m-%d) - Actionable Error Recovery and Emoji Accessibility in Dynamic Status
+**Learning:** Dynamically injected error or success states often lack proper ARIA hiding for emojis, causing verbose screen reader announcements. Additionally, failure messages without clear localized actions leave the user unable to clear the error. Furthermore, when implementing 'Dismiss' logic that hides a dynamic status container, failing to explicitly reset the container's visibility upon subsequent renders causes all future messages to remain permanently hidden.
+**Action:** Always wrap emojis in `<span aria-hidden="true">` when dynamically creating UI elements in JS. Include an explicit 'Dismiss' or 'Try Again' action for error states using safe DOM manipulation methods. Crucially, always explicitly clear any visibility states (e.g., `el.classList.remove('hidden')`, `el.style.display = ''`) at the very beginning of the render function to prevent stale hidden states from blocking subsequent feedback.
