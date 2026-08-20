@@ -19,3 +19,6 @@
 ## 2025-02-18 - Semantic Headings in Flexbox Layouts
 **Learning:** Replacing non-semantic inline elements (like `<span>`) with heading elements (like `<h3>`) within flexbox or grid layouts can break the alignment due to default browser margins on headings.
 **Action:** When improving semantic accessibility by upgrading to heading elements in structured layouts, always explicitly reset the margins (e.g., `margin: 0;`) on the new headings to maintain visual parity.
+## 2024-05-24 - Grid Balance for Odd Elements
+**Learning:** Using a fixed 2-column grid layout for a dynamic number of cards (like stats) results in an unbalanced layout when the number of items is odd, leaving a visually unpleasing empty space on the last row.
+**Action:** Apply `grid-column: 1 / -1;` to `:nth-child(odd):last-child` within grid containers to ensure the final item gracefully spans the full width, maintaining layout balance without complex JS logic.
