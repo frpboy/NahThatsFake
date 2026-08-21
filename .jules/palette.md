@@ -19,3 +19,7 @@
 ## 2025-02-18 - Semantic Headings in Flexbox Layouts
 **Learning:** Replacing non-semantic inline elements (like `<span>`) with heading elements (like `<h3>`) within flexbox or grid layouts can break the alignment due to default browser margins on headings.
 **Action:** When improving semantic accessibility by upgrading to heading elements in structured layouts, always explicitly reset the margins (e.g., `margin: 0;`) on the new headings to maintain visual parity.
+
+## 2024-08-21 - Balanced Grid Layouts for Odd Items
+**Learning:** In 2-column grid layouts (like stats dashboards), an odd number of items leaves the final row unbalanced and visually jarring on the left side.
+**Action:** Use the `:nth-child(odd):last-child` selector with `grid-column: 1 / -1;` to make hanging elements span the full width, creating a graceful fallback for unbalanced data without requiring complex JavaScript logic.
