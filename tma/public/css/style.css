@@ -103,6 +103,10 @@ h3 {
     margin-bottom: 16px;
 }
 
+.stats-grid > *:nth-child(odd):last-child {
+    grid-column: 1 / -1;
+}
+
 .stat-card {
     background: var(--tg-theme-button-color);
     color: var(--tg-theme-button-text-color);
