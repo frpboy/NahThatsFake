@@ -8,7 +8,7 @@
     --tg-theme-secondary-bg-color: var(--tg-theme-secondary-bg-color, #f0f2f5);
     --tg-theme-header-bg-color: var(--tg-theme-header-bg-color, #ffffff);
     --tg-theme-section-bg-color: var(--tg-theme-section-bg-color, #ffffff);
-    
+
     /* Safe Area Variables */
     --tg-safe-area-inset-top: env(safe-area-inset-top, 0px);
     --tg-safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
@@ -101,10 +101,6 @@ h3 {
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
     margin-bottom: 16px;
-}
-
-.stats-grid > *:nth-child(odd):last-child {
-    grid-column: 1 / -1;
 }
 
 .stat-card {
