@@ -29,3 +29,6 @@
 ## 2025-02-12 - Concurrent Supabase Queries
 **Learning:** Found multiple independent Supabase count queries (`users` and `checks`) being executed sequentially using `await supabase...` sequentially in a command handler.
 **Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
+## 2025-02-13 - Concurrent DB Queries
+**Learning:** Sequential DB queries for independent entities in handler endpoints add unnecessary network latency.
+**Action:** Use Promise.all to fetch them concurrently whenever possible, like for ownerRow and targetUser verification in /impersonate.

@@ -553,17 +553,18 @@ bot.command('impersonate', async (ctx) => {
     return;
   }
 
-  const { data: ownerRow } = await supabase
-    .from('users')
-    .select('id')
-    .eq('telegram_user_id', ctx.from.id.toString())
-    .maybeSingle();
-
-  const { data: targetUser } = await supabase
-    .from('users')
-    .select('id, telegram_user_id, username, first_name, is_banned, role')
-    .eq('telegram_user_id', targetTelegramUserId)
-    .maybeSingle();
+  const [{ data: ownerRow }, { data: targetUser }] = await Promise.all([
+    supabase
+      .from('users')
+      .select('id')
+      .eq('telegram_user_id', ctx.from.id.toString())
+      .maybeSingle(),
+    supabase
+      .from('users')
+      .select('id, telegram_user_id, username, first_name, is_banned, role')
+      .eq('telegram_user_id', targetTelegramUserId)
+      .maybeSingle()
+  ]);
 
   if (!ownerRow) {
     await ctx.reply('❌ Owner record missing in DB (role must be owner).');
