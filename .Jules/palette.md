@@ -22,3 +22,6 @@
 ## 2024-08-04 - Improve Risk Badge Contrast
 **Learning:** Default Material Design 500-level colors on 10% opacity backgrounds fail WCAG AA contrast for text.
 **Action:** Use 700-level colors for light mode and keep 300-level or 500-level for dark mode to ensure text is readable.
+## 2024-10-24 - Semantic Headings in Flex Layouts
+**Learning:** Replacing inline elements like <span> with semantic headings like <h3> improves accessibility, but can break flexbox layouts due to browser default margins on headings.
+**Action:** When improving semantic accessibility by replacing inline elements with headings inside flexbox or grid layouts, explicitly reset the default margins (e.g., margin: 0;) on the new headings to prevent layout breakage.
