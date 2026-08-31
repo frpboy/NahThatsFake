@@ -47,13 +47,23 @@ Upgrade to a Group Plan to protect this chat.`);
       return;
     }
 
-    // 5. Check if Group is Already Linked (by someone else)
-    const { data: existingGroup } = await supabase
-      .from('groups')
-      .select('admin_user_id, group_name')
-      .eq('telegram_group_id', ctx.chat.id.toString())
-      .maybeSingle();
+    // ⚡ Bolt: Execute independent Supabase queries concurrently
+    // to halve network latency during group linking, placed safely after admin checks.
+    const [{ data: existingGroup }, { data: userLinkedGroup }] = await Promise.all([
+      supabase
+        .from('groups')
+        .select('admin_user_id, group_name')
+        .eq('telegram_group_id', ctx.chat.id.toString())
+        .maybeSingle(),
+      supabase
+        .from('groups')
+        .select('telegram_group_id, group_name')
+        .eq('admin_user_id', userData.id)
+        .neq('telegram_group_id', ctx.chat.id.toString())
+        .maybeSingle()
+    ]);
 
+    // 5. Check if Group is Already Linked (by someone else)
     if (existingGroup && existingGroup.admin_user_id !== userData.id) {
       await ctx.reply(`❌ This group is already linked to another admin's plan.
       
@@ -62,13 +72,6 @@ Only the original linker can manage this subscription.`);
     }
 
     // 6. Check if User has Linked Another Group (One Purchase -> One Group)
-    const { data: userLinkedGroup } = await supabase
-      .from('groups')
-      .select('telegram_group_id, group_name')
-      .eq('admin_user_id', userData.id)
-      .neq('telegram_group_id', ctx.chat.id.toString()) // Exclude current group (re-linking is fine)
-      .maybeSingle();
-
     if (userLinkedGroup) {
       await ctx.reply(`❌ You have already linked your plan to another group: *${userLinkedGroup.group_name}*
       
