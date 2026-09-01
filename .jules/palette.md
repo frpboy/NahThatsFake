@@ -22,3 +22,6 @@
 ## 2024-08-27 - Balance Grid Layouts
 **Learning:** 2-column grid layouts look unbalanced when they have an odd number of items, leaving dangling single items in the last row.
 **Action:** Always use `:nth-child(odd):last-child { grid-column: 1 / -1; }` on children to ensure odd items take full width and maintain symmetry.
+## 2024-05-18 - Styled unstyled status toast
+**Learning:** In premium.html, the status toast was applying a `.status` class that didn't exist in the CSS, rendering plain black unstyled text for important loading/success states.
+**Action:** Added `.status` class utilizing theme colors (`var(--tg-theme-button-color)`) to provide proper visual polish and contrast for informative/success messages, improving the interaction polish.
