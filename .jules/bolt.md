@@ -27,5 +27,5 @@
 **Action:** Extract specific properties (like `referral_code`) directly from the pre-fetched `dbUser` object using optional chaining (e.g., `dbUser?.referral_code`) rather than running redundant database queries.
 
 ## 2025-02-12 - Concurrent Supabase Queries
-**Learning:** Found multiple independent Supabase count queries (`users` and `checks`) being executed sequentially using `await supabase...` sequentially in a command handler.
-**Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
+**Learning:** Found multiple independent Supabase queries executed sequentially using `await supabase...` in a command handler.
+**Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time. Ensure that failure paths (like missing early validation) do not get executed unnecessarily.
