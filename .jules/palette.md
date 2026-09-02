@@ -22,3 +22,6 @@
 ## 2024-08-27 - Balance Grid Layouts
 **Learning:** 2-column grid layouts look unbalanced when they have an odd number of items, leaving dangling single items in the last row.
 **Action:** Always use `:nth-child(odd):last-child { grid-column: 1 / -1; }` on children to ensure odd items take full width and maintain symmetry.
+## 2024-05-24 - Upgrading spans to semantic headings in CSS Grids
+**Learning:** When upgrading non-semantic inline elements like `<span>` to block-level semantic elements like `<h3>` inside flexbox or grid layouts, the default browser margins and font-weights applied to headings will break the layout balance.
+**Action:** Explicitly reset `margin: 0;` and `font-weight: normal;` (while preserving intended margins) on the new semantic heading classes.
