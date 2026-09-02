@@ -18,6 +18,8 @@ function timingSafeCompare(a, b) {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.disable('x-powered-by');
+
 // Middleware
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://nahthatsfake.vercel.app').split(',');
 app.use(cors({

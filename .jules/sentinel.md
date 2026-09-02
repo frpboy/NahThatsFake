@@ -45,3 +45,7 @@
 **Vulnerability:** The feedback submission and support reply systems interpolated user-controlled data (`first_name`, `username`, and feedback `text`) directly into Markdown messages without escaping characters. An attacker could intentionally or accidentally submit feedback containing unbalanced markdown characters (like backticks) which causes a `400 Bad Request` from the Telegram API, leading to failed message delivery and a localized DoS.
 **Learning:** All user-controlled text, including seemingly benign fields like names, must be sanitized before being formatted via `parse_mode: 'Markdown'` in Telegram API messages.
 **Prevention:** Always implement an `escapeMarkdown` utility to escape special characters before embedding user variables into Markdown message templates.
+## 2026-09-02 - Hide X-Powered-By Header
+**Vulnerability:** Express apps by default leak the `X-Powered-By` header, which exposes the technology stack to potential attackers.
+**Learning:** Security by obscurity is not a primary defense, but leaking version or framework information makes reconnaissance easier for attackers.
+**Prevention:** Always disable the `X-Powered-By` header in Express apps using `app.disable('x-powered-by')` or use `helmet`.
