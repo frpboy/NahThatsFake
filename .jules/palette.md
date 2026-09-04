@@ -22,3 +22,6 @@
 ## 2024-08-27 - Balance Grid Layouts
 **Learning:** 2-column grid layouts look unbalanced when they have an odd number of items, leaving dangling single items in the last row.
 **Action:** Always use `:nth-child(odd):last-child { grid-column: 1 / -1; }` on children to ensure odd items take full width and maintain symmetry.
+## 2024-05-25 - DOM Order and Screen Readers vs Visual Order
+**Learning:** For screen readers, the sequence of DOM elements dictates the logical document outline, meaning semantic headings must come *before* their associated content in HTML. However, sometimes visual designs require the content (like a large stat number) to appear *above* its label.
+**Action:** Reordered the DOM so the `h3` label precedes the `span` value for screen readers, and used CSS Flexbox `flex-direction: column-reverse` to flip their visual presentation on screen to maintain the original design.
