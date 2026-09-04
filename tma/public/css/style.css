@@ -114,7 +114,7 @@ h3 {
     padding: 16px;
     text-align: center;
     display: flex;
-    flex-direction: column;
+    flex-direction: column-reverse;
     justify-content: center;
     align-items: center;
 }
@@ -129,7 +129,9 @@ h3 {
 .stat-label {
     font-size: 12px;
     opacity: 0.9;
+    margin: 0;
     margin-top: 4px;
+    font-weight: normal;
 }
 
 .check-item {
