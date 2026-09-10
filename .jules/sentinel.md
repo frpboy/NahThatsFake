@@ -45,3 +45,7 @@
 **Vulnerability:** The feedback submission and support reply systems interpolated user-controlled data (`first_name`, `username`, and feedback `text`) directly into Markdown messages without escaping characters. An attacker could intentionally or accidentally submit feedback containing unbalanced markdown characters (like backticks) which causes a `400 Bad Request` from the Telegram API, leading to failed message delivery and a localized DoS.
 **Learning:** All user-controlled text, including seemingly benign fields like names, must be sanitized before being formatted via `parse_mode: 'Markdown'` in Telegram API messages.
 **Prevention:** Always implement an `escapeMarkdown` utility to escape special characters before embedding user variables into Markdown message templates.
+## 2024-05-24 - Markdown Injection in Telegram Bot Feedback Handlers
+**Vulnerability:** The bot failed to escape the `]` character in user feedback when interpolating it into Markdown strings for admin logs/replies.
+**Learning:** Telegram's legacy `Markdown` parser requires specific characters to be escaped to prevent malformed text. If any unescaped character breaks the Markdown format (like unclosed tags), Telegram's API returns a 400 Bad Request DoS.
+**Prevention:** Ensure the entire exhaustive list of required characters for the chosen `parse_mode` is escaped (e.g. `_`, `*`, `` ` ``, `[`, and `]`).
