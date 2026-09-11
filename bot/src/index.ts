@@ -1518,7 +1518,7 @@ bot.on('message:text', async (ctx) => {
       const ownerTelegramId = await resolveOwnerTelegramId();
       if (ownerTelegramId) {
         try {
-          const escapeMarkdown = (t: string) => t.replace(/([_*`\[])/g, '\\$1');
+          const escapeMarkdown = (t: string) => t.replace(/([_*`\[\]])/g, '\\$1');
           await ctx.api.sendMessage(
             ownerTelegramId,
             `📬 *New Feedback (${state.type.toUpperCase()})*\n\nFrom: ${escapeMarkdown(ctx.from?.first_name || 'User')} (@${escapeMarkdown(ctx.from?.username || 'NoUser')})\nID: \`${userId}\`\n\n${escapeMarkdown(text)}`,
@@ -1547,7 +1547,7 @@ bot.on('message:text', async (ctx) => {
       replyState.delete(userId);
 
       try {
-        const escapeMarkdown = (t: string) => t.replace(/([_*`\[])/g, '\\$1');
+        const escapeMarkdown = (t: string) => t.replace(/([_*`\[\]])/g, '\\$1');
         await ctx.api.sendMessage(
           state.targetUserId,
           `📬 *Response from Support:*\n\n${escapeMarkdown(text)}`,
