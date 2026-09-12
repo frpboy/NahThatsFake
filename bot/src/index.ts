@@ -15,6 +15,7 @@ import { fetchAdsGramAd } from './services/adsgram';
 import { checkAbuseAndEnforce } from './services/abuseEnforcement';
 import { config, validateConfig } from './config';
 import { getOrCreateUserByTelegram, getUserByTelegramId } from './utils/user';
+import { escapeMarkdown } from './utils/markdown';
 
 // Validate environment variables
 validateConfig();
@@ -534,7 +535,7 @@ bot.command('whoami', async (ctx) => {
       .maybeSingle();
 
     const label = target?.username ? `@${target.username}` : (target?.first_name || 'User');
-    actingLine = `\n🕵️ Acting as: *${label}* (ID: \`${actingTelegramUserId}\`)`;
+    actingLine = `\n🕵️ Acting as: *${escapeMarkdown(label)}* (ID: \`${actingTelegramUserId}\`)`;
   }
 
   await ctx.reply(`🆔 ID: \`${ctx.from.id}\`\n👑 Role: *${role.toUpperCase()}*${actingLine}`, { parse_mode: 'Markdown' });
@@ -612,7 +613,7 @@ bot.command('impersonate', async (ctx) => {
   await ctx.reply(`🕵️ *Impersonation started*
 
 You are now acting as:
-👤 ${label} (ID: \`${targetTelegramUserId}\`)
+👤 ${escapeMarkdown(label)} (ID: \`${targetTelegramUserId}\`)
 
 This action is logged.
 Use /impersonate_off to exit.`, { parse_mode: 'Markdown' });
@@ -1047,7 +1048,7 @@ bot.command('simulate_abuse', async (ctx) => {
   await logAdminAction(ctx.from.id.toString(), 'SIMULATE_ABUSE', { type, count }, targetTelegramUserId);
 
   const label = target.username ? `@${target.username}` : (target.first_name || 'User');
-  await ctx.reply(`🧪 *Abuse Simulation Complete*\n\nUser: *${label}*\nInjected: *${type} × ${count}*\n\nResult:\n• Throttled: *${after?.is_throttled ? 'YES' : 'NO'}*\n• Temp/Hard Ban: *${after?.is_banned ? 'YES' : 'NO'}*\n\n⚠️ Marked as SIMULATED\nThis action is logged.`, { parse_mode: 'Markdown' });
+  await ctx.reply(`🧪 *Abuse Simulation Complete*\n\nUser: *${escapeMarkdown(label)}*\nInjected: *${type} × ${count}*\n\nResult:\n• Throttled: *${after?.is_throttled ? 'YES' : 'NO'}*\n• Temp/Hard Ban: *${after?.is_banned ? 'YES' : 'NO'}*\n\n⚠️ Marked as SIMULATED\nThis action is logged.`, { parse_mode: 'Markdown' });
 });
 
 bot.command('simulate_abuse_reset', async (ctx) => {
@@ -1134,7 +1135,7 @@ bot.command('timeline', async (ctx) => {
   const label = target.username ? `@${target.username}` : (target.first_name || 'User');
   const lines = top.map(e => `• ${new Date(e.ts).toLocaleDateString()} — ${e.text}`).join('\n');
 
-  await ctx.reply(`📜 *User Timeline — ${label}*\n\n${lines}`, { parse_mode: 'Markdown' });
+  await ctx.reply(`📜 *User Timeline — ${escapeMarkdown(label)}*\n\n${lines}`, { parse_mode: 'Markdown' });
 });
 
 bot.command('groupmap', async (ctx) => {
@@ -1518,7 +1519,6 @@ bot.on('message:text', async (ctx) => {
       const ownerTelegramId = await resolveOwnerTelegramId();
       if (ownerTelegramId) {
         try {
-          const escapeMarkdown = (t: string) => t.replace(/([_*`\[])/g, '\\$1');
           await ctx.api.sendMessage(
             ownerTelegramId,
             `📬 *New Feedback (${state.type.toUpperCase()})*\n\nFrom: ${escapeMarkdown(ctx.from?.first_name || 'User')} (@${escapeMarkdown(ctx.from?.username || 'NoUser')})\nID: \`${userId}\`\n\n${escapeMarkdown(text)}`,
@@ -1547,7 +1547,6 @@ bot.on('message:text', async (ctx) => {
       replyState.delete(userId);
 
       try {
-        const escapeMarkdown = (t: string) => t.replace(/([_*`\[])/g, '\\$1');
         await ctx.api.sendMessage(
           state.targetUserId,
           `📬 *Response from Support:*\n\n${escapeMarkdown(text)}`,
