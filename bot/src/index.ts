@@ -16,6 +16,11 @@ import { checkAbuseAndEnforce } from './services/abuseEnforcement';
 import { config, validateConfig } from './config';
 import { getOrCreateUserByTelegram, getUserByTelegramId } from './utils/user';
 
+function escapeMarkdown(text: string): string {
+  if (!text) return '';
+  return text.replace(/([_*`\[])/g, '\\$1');
+}
+
 // Validate environment variables
 validateConfig();
 
@@ -435,7 +440,7 @@ bot.command('top', async (ctx) => {
   let text = '🏆 *Referral Leaderboard*\n\n';
   topUsers.forEach((u, i) => {
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-    text += `${medal} ${u.first_name || 'User'} - ${u.referral_count || 0} invites\n`;
+    text += `${medal} ${escapeMarkdown(u.first_name || 'User')} - ${u.referral_count || 0} invites\n`;
   });
 
   await ctx.reply(text, { parse_mode: 'Markdown' });
@@ -533,7 +538,7 @@ bot.command('whoami', async (ctx) => {
       .eq('telegram_user_id', actingTelegramUserId)
       .maybeSingle();
 
-    const label = target?.username ? `@${target.username}` : (target?.first_name || 'User');
+    const label = target?.username ? `@${escapeMarkdown(target.username)}` : escapeMarkdown(target?.first_name || 'User');
     actingLine = `\n🕵️ Acting as: *${label}* (ID: \`${actingTelegramUserId}\`)`;
   }
 
@@ -608,7 +613,7 @@ bot.command('impersonate', async (ctx) => {
 
   await logAdminAction(ctx.from.id.toString(), 'IMPERSONATE_START', { reason }, targetTelegramUserId);
 
-  const label = targetUser.username ? `@${targetUser.username}` : (targetUser.first_name || 'User');
+  const label = targetUser.username ? `@${escapeMarkdown(targetUser.username)}` : escapeMarkdown(targetUser.first_name || 'User');
   await ctx.reply(`🕵️ *Impersonation started*
 
 You are now acting as:
@@ -1046,7 +1051,7 @@ bot.command('simulate_abuse', async (ctx) => {
 
   await logAdminAction(ctx.from.id.toString(), 'SIMULATE_ABUSE', { type, count }, targetTelegramUserId);
 
-  const label = target.username ? `@${target.username}` : (target.first_name || 'User');
+  const label = target.username ? `@${escapeMarkdown(target.username)}` : escapeMarkdown(target.first_name || 'User');
   await ctx.reply(`🧪 *Abuse Simulation Complete*\n\nUser: *${label}*\nInjected: *${type} × ${count}*\n\nResult:\n• Throttled: *${after?.is_throttled ? 'YES' : 'NO'}*\n• Temp/Hard Ban: *${after?.is_banned ? 'YES' : 'NO'}*\n\n⚠️ Marked as SIMULATED\nThis action is logged.`, { parse_mode: 'Markdown' });
 });
 
@@ -1131,7 +1136,7 @@ bot.command('timeline', async (ctx) => {
 
   events.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
   const top = events.slice(0, 20);
-  const label = target.username ? `@${target.username}` : (target.first_name || 'User');
+  const label = target.username ? `@${escapeMarkdown(target.username)}` : escapeMarkdown(target.first_name || 'User');
   const lines = top.map(e => `• ${new Date(e.ts).toLocaleDateString()} — ${e.text}`).join('\n');
 
   await ctx.reply(`📜 *User Timeline — ${label}*\n\n${lines}`, { parse_mode: 'Markdown' });
@@ -1156,7 +1161,7 @@ bot.command('groupmap', async (ctx) => {
   }
 
   const rows = data.map((g: any, i: number) => {
-    const name = g.group_name ? ` | ${g.group_name}` : '';
+    const name = g.group_name ? ` | ${escapeMarkdown(g.group_name)}` : '';
     const plan = String(g.plan || 'free').toUpperCase();
     return `${i + 1}️⃣ ${g.telegram_group_id}${name} | ${g.high_risk_pct}% HIGH | ${g.abuse_flags} flags | ${plan}`;
   }).join('\n');
@@ -1518,7 +1523,6 @@ bot.on('message:text', async (ctx) => {
       const ownerTelegramId = await resolveOwnerTelegramId();
       if (ownerTelegramId) {
         try {
-          const escapeMarkdown = (t: string) => t.replace(/([_*`\[])/g, '\\$1');
           await ctx.api.sendMessage(
             ownerTelegramId,
             `📬 *New Feedback (${state.type.toUpperCase()})*\n\nFrom: ${escapeMarkdown(ctx.from?.first_name || 'User')} (@${escapeMarkdown(ctx.from?.username || 'NoUser')})\nID: \`${userId}\`\n\n${escapeMarkdown(text)}`,
@@ -1547,7 +1551,6 @@ bot.on('message:text', async (ctx) => {
       replyState.delete(userId);
 
       try {
-        const escapeMarkdown = (t: string) => t.replace(/([_*`\[])/g, '\\$1');
         await ctx.api.sendMessage(
           state.targetUserId,
           `📬 *Response from Support:*\n\n${escapeMarkdown(text)}`,
