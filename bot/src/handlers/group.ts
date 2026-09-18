@@ -70,7 +70,8 @@ Only the original linker can manage this subscription.`);
       .maybeSingle();
 
     if (userLinkedGroup) {
-      await ctx.reply(`❌ You have already linked your plan to another group: *${userLinkedGroup.group_name}*
+      const escapeMarkdown = (t: string) => t.replace(/([_*`\[])/g, '\\$1');
+      await ctx.reply(`❌ You have already linked your plan to another group: *${escapeMarkdown(userLinkedGroup.group_name || 'Unknown Group')}*
       
 You can only link one group per subscription. Unlink the old group first (or contact support).`, { parse_mode: 'Markdown' });
       return;
