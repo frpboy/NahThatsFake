@@ -29,3 +29,6 @@
 ## 2025-02-12 - Concurrent Supabase Queries
 **Learning:** Found multiple independent Supabase count queries (`users` and `checks`) being executed sequentially using `await supabase...` sequentially in a command handler.
 **Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
+## 2024-09-20 - Concurrent Independent DB Queries
+**Learning:** Sequential independent database queries (e.g., fetching user data and checking payment idempotency) create unnecessary latency blockages, particularly on critical paths like payment verification. Because the Supabase JS client returns `{ data, error }` instead of throwing on most logical errors, these queries can be safely parallelized.
+**Action:** Always combine independent Supabase queries using `Promise.all` after inexpensive authorization/validation checks to halve network latency without complex error handling.
