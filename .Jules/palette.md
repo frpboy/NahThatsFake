@@ -22,3 +22,6 @@
 ## 2024-08-04 - Improve Risk Badge Contrast
 **Learning:** Default Material Design 500-level colors on 10% opacity backgrounds fail WCAG AA contrast for text.
 **Action:** Use 700-level colors for light mode and keep 300-level or 500-level for dark mode to ensure text is readable.
+## 2024-05-24 - Semantic DOM Ordering for Stats
+**Learning:** When numeric stats are visually displayed above their labels, using the exact visual order in the DOM (number then label) creates a poor screen reader experience because raw numbers lack context when read first.
+**Action:** Always place the semantic label (e.g., `<h3>`) before the value in the HTML DOM, and use CSS `flex-direction: column-reverse` to achieve the visual design of the number appearing above the label. Ensure margins are reset on the heading element.
