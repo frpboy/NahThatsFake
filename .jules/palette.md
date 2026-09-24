@@ -22,3 +22,7 @@
 ## 2024-08-27 - Balance Grid Layouts
 **Learning:** 2-column grid layouts look unbalanced when they have an odd number of items, leaving dangling single items in the last row.
 **Action:** Always use `:nth-child(odd):last-child { grid-column: 1 / -1; }` on children to ensure odd items take full width and maintain symmetry.
+
+## 2024-05-24 - Semantic Accessibility for Statistical Displays
+**Learning:** When statistical displays feature a numeric value visually appearing above its label, using `<span>` for both creates poor screen reader navigation. A heading element (e.g., `<h3>`) must semantically precede the value in the DOM.
+**Action:** Use CSS `flex-direction: column-reverse` to position the number visually above the heading label, ensuring correct DOM order for screen readers without breaking the visual design.
