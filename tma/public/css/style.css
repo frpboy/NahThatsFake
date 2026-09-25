@@ -114,7 +114,7 @@ h3 {
     padding: 16px;
     text-align: center;
     display: flex;
-    flex-direction: column;
+    flex-direction: column-reverse;
     justify-content: center;
     align-items: center;
 }
