@@ -361,24 +361,22 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
         throw new Error('Payment metadata mismatch');
       }
 
-      // Find user UUID from telegram ID
-      const { data: user } = await supabase
-        .from('users')
-        .select('id, permanent_credits')
-        .eq('telegram_user_id', userId.toString())
-        .single();
-        
-      if (!user) throw new Error('User not found');
-
-      const planDetails = getPlanDetails(planId);
-      if (!planDetails) throw new Error('Invalid plan');
-
-      // 🛡️ Sentinel: Idempotency check before inserting payment
-      const { data: existingPayment, error: existingError } = await supabase
-        .from('payments')
-        .select('id')
-        .eq('payment_id', razorpay_payment_id)
-        .maybeSingle();
+      // ⚡ Bolt: Execute user fetch and idempotency check concurrently to halve DB latency
+      const [
+        { data: user },
+        { data: existingPayment, error: existingError }
+      ] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, permanent_credits')
+          .eq('telegram_user_id', userId.toString())
+          .single(),
+        supabase
+          .from('payments')
+          .select('id')
+          .eq('payment_id', razorpay_payment_id)
+          .maybeSingle()
+      ]);
 
       if (existingError) {
          throw new Error('Database error during idempotency check');
@@ -386,6 +384,11 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
       if (existingPayment) {
          return res.json({ success: true, message: 'Payment already processed' });
       }
+
+      if (!user) throw new Error('User not found');
+
+      const planDetails = getPlanDetails(planId);
+      if (!planDetails) throw new Error('Invalid plan');
 
       // Record payment
       const { error: insertError } = await supabase.from('payments').insert({
@@ -523,28 +526,33 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
         
         if (telegramUserId && planId) {
           // Process fulfillment (duplicate logic from verify endpoint)
-          const { data: user } = await supabase
-            .from('users')
-            .select('id, permanent_credits, last_payment_id')
-            .eq('telegram_user_id', telegramUserId.toString())
-            .single();
-
-          if (user) {
-            // 🛡️ Sentinel: Idempotency check (database-backed instead of user.last_payment_id)
-            const { data: existingPayment, error: existingError } = await supabase
+          // ⚡ Bolt: Execute user fetch and idempotency check concurrently to halve DB latency
+          const [
+            { data: user },
+            { data: existingPayment, error: existingError }
+          ] = await Promise.all([
+            supabase
+              .from('users')
+              .select('id, permanent_credits, last_payment_id')
+              .eq('telegram_user_id', telegramUserId.toString())
+              .single(),
+            supabase
               .from('payments')
               .select('id')
               .eq('payment_id', payment.id)
-              .maybeSingle();
+              .maybeSingle()
+          ]);
 
-            if (existingError) {
-               console.error('Idempotency check failed:', existingError);
-               return res.status(500).json({ error: 'Database error' });
-            }
-            if (existingPayment) {
-               console.log('Payment already processed:', payment.id);
-               return res.json({ status: 'ok' });
-            }
+          if (existingError) {
+             console.error('Idempotency check failed:', existingError);
+             return res.status(500).json({ error: 'Database error' });
+          }
+          if (existingPayment) {
+             console.log('Payment already processed:', payment.id);
+             return res.json({ status: 'ok' });
+          }
+
+          if (user) {
 
             const planDetails = getPlanDetails(planId);
             if (planDetails) {
