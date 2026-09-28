@@ -29,3 +29,6 @@
 ## 2025-02-12 - Concurrent Supabase Queries
 **Learning:** Found multiple independent Supabase count queries (`users` and `checks`) being executed sequentially using `await supabase...` sequentially in a command handler.
 **Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
+## 2024-09-28 - Parallelize Supabase Queries
+**Learning:** Independent Supabase database calls (like user verification and idempotency checks) that are executed sequentially add unnecessary round-trip latency. Supabase JS client handles failures gracefully by returning `{ data, error }` instead of throwing exceptions, making `Promise.all` safe and effective for querying even if one query might fail (e.g. user not found).
+**Action:** When making multiple independent queries to the database (especially after doing early validation), combine them using `Promise.all` to halve network latency.
