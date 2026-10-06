@@ -533,7 +533,8 @@ bot.command('whoami', async (ctx) => {
       .eq('telegram_user_id', actingTelegramUserId)
       .maybeSingle();
 
-    const label = target?.username ? `@${target.username}` : (target?.first_name || 'User');
+    const escapeMarkdown = (t: string) => t.replace(/([_*`\[])/g, '\\$1');
+    const label = target?.username ? `@${escapeMarkdown(target.username)}` : escapeMarkdown(target?.first_name || 'User');
     actingLine = `\n🕵️ Acting as: *${label}* (ID: \`${actingTelegramUserId}\`)`;
   }
 

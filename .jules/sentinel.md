@@ -45,3 +45,7 @@
 **Vulnerability:** The feedback submission and support reply systems interpolated user-controlled data (`first_name`, `username`, and feedback `text`) directly into Markdown messages without escaping characters. An attacker could intentionally or accidentally submit feedback containing unbalanced markdown characters (like backticks) which causes a `400 Bad Request` from the Telegram API, leading to failed message delivery and a localized DoS.
 **Learning:** All user-controlled text, including seemingly benign fields like names, must be sanitized before being formatted via `parse_mode: 'Markdown'` in Telegram API messages.
 **Prevention:** Always implement an `escapeMarkdown` utility to escape special characters before embedding user variables into Markdown message templates.
+## 2024-10-06 - [CRITICAL] Prevent Markdown Injection DoS in Whoami Command
+**Vulnerability:** The `/whoami` command interpolated user names unescaped into Markdown. This allowed malicious user profiles containing Markdown formatting characters to cause `400 Bad Request` DoS.
+**Learning:** Even when using legacy `Markdown` (not `MarkdownV2`), you must escape user-provided strings for the specific characters it supports `_*`[`.
+**Prevention:** Always route user strings through the appropriate escaping regex `replace(/([_*`\[])/g, '\\$1')` before placing them in Telegram Markdown bot replies.
