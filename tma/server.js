@@ -361,24 +361,27 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
         throw new Error('Payment metadata mismatch');
       }
 
-      // Find user UUID from telegram ID
-      const { data: user } = await supabase
-        .from('users')
-        .select('id, permanent_credits')
-        .eq('telegram_user_id', userId.toString())
-        .single();
-        
-      if (!user) throw new Error('User not found');
-
       const planDetails = getPlanDetails(planId);
       if (!planDetails) throw new Error('Invalid plan');
 
-      // 🛡️ Sentinel: Idempotency check before inserting payment
-      const { data: existingPayment, error: existingError } = await supabase
-        .from('payments')
-        .select('id')
-        .eq('payment_id', razorpay_payment_id)
-        .maybeSingle();
+      // ⚡ Bolt: Execute independent user fetch and idempotency check concurrently to halve network latency
+      const [
+        { data: user },
+        { data: existingPayment, error: existingError }
+      ] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, permanent_credits')
+          .eq('telegram_user_id', userId.toString())
+          .single(),
+        supabase
+          .from('payments')
+          .select('id')
+          .eq('payment_id', razorpay_payment_id)
+          .maybeSingle()
+      ]);
+
+      if (!user) throw new Error('User not found');
 
       if (existingError) {
          throw new Error('Database error during idempotency check');
