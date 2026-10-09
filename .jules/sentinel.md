@@ -45,3 +45,8 @@
 **Vulnerability:** The feedback submission and support reply systems interpolated user-controlled data (`first_name`, `username`, and feedback `text`) directly into Markdown messages without escaping characters. An attacker could intentionally or accidentally submit feedback containing unbalanced markdown characters (like backticks) which causes a `400 Bad Request` from the Telegram API, leading to failed message delivery and a localized DoS.
 **Learning:** All user-controlled text, including seemingly benign fields like names, must be sanitized before being formatted via `parse_mode: 'Markdown'` in Telegram API messages.
 **Prevention:** Always implement an `escapeMarkdown` utility to escape special characters before embedding user variables into Markdown message templates.
+
+## 2026-10-09 - [CRITICAL] Prevent Markdown Injection DoS in Admin Commands
+**Vulnerability:** Admin commands like `/timeline`, `/simulate_abuse`, `/impersonate`, `/whoami`, and `/groupmap` interpolate user-controlled data (`first_name`, `username`, and `group_name`) directly into Markdown messages without escaping characters. An attacker with a malicious name could trigger these commands or cause them to crash for admins, resulting in a `400 Bad Request` from the Telegram API, leading to a localized DoS for administrative functions.
+**Learning:** Even internal or admin-facing commands must sanitize user-controlled text before formatting via `parse_mode: 'Markdown'` to maintain system stability.
+**Prevention:** Ensure the `escapeMarkdown` utility is applied universally to all user-controlled variables across all message handlers, not just public-facing ones.
