@@ -108,6 +108,10 @@ h3 {
 }
 
 .stat-card {
+    display: flex;
+    flex-direction: column-reverse;
+    justify-content: center;
+    align-items: center;
     background: var(--tg-theme-button-color);
     color: var(--tg-theme-button-text-color);
     border-radius: 12px;
@@ -127,6 +131,8 @@ h3 {
 }
 
 .stat-label {
+    margin: 0;
+    font-weight: normal;
     font-size: 12px;
     opacity: 0.9;
     margin-top: 4px;
