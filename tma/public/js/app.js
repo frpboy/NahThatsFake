@@ -331,33 +331,73 @@ function renderChecks() {
         return;
     }
 
-    const html = checks.map(check => {
+    if (currentPage === 1) {
+        container.innerHTML = '';
+    }
+
+    checks.forEach(check => {
         const icon = check.check_type === 'image' ? '🖼️' : '🔗';
-        const riskClass = `risk-${(check.risk_level || 'low').toLowerCase()}`;
+        const riskLevel = check.risk_level || 'UNKNOWN';
+        const riskClass = `risk-${riskLevel.toLowerCase()}`;
         const scorePercent = check.score ? Math.round(check.score * 100) : 0;
         const date = new Date(check.created_at).toLocaleDateString();
-
         const typeLabel = check.check_type === 'image' ? 'Image Analysis' : 'Link Analysis';
-        return `
-            <div class="check-item" role="button" tabindex="0" aria-label="${typeLabel} from ${date}. Risk level: ${check.risk_level || 'UNKNOWN'}, ${scorePercent}% Risk." onclick="viewCheckDetails('${check.id}')" onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); viewCheckDetails('${check.id}'); }">
-                <div class="check-icon ${check.check_type}" aria-hidden="true">${icon}</div>
-                <div class="check-details" aria-hidden="true">
-                    <div class="check-type">${typeLabel}</div>
-                    <div class="check-date">${date}</div>
-                </div>
-                <div class="check-result" aria-hidden="true">
-                    <div class="risk-badge ${riskClass}">${check.risk_level || 'UNKNOWN'}</div>
-                    <div style="font-size: 12px; color: var(--tg-theme-hint-color); margin-top: 4px;">${scorePercent}% Risk</div>
-                </div>
-            </div>
-        `;
-    }).join('');
 
-    if (currentPage === 1) {
-        container.innerHTML = html;
-    } else {
-        container.insertAdjacentHTML('beforeend', html);
-    }
+        const item = document.createElement('div');
+        item.className = 'check-item';
+        item.setAttribute('role', 'button');
+        item.setAttribute('tabindex', '0');
+        item.setAttribute('aria-label', `${typeLabel} from ${date}. Risk level: ${riskLevel}, ${scorePercent}% Risk.`);
+
+        item.onclick = () => viewCheckDetails(check.id);
+        item.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                viewCheckDetails(check.id);
+            }
+        };
+
+        const iconDiv = document.createElement('div');
+        iconDiv.className = `check-icon ${check.check_type}`;
+        iconDiv.setAttribute('aria-hidden', 'true');
+        iconDiv.textContent = icon;
+
+        const detailsDiv = document.createElement('div');
+        detailsDiv.className = 'check-details';
+        detailsDiv.setAttribute('aria-hidden', 'true');
+
+        const typeDiv = document.createElement('div');
+        typeDiv.className = 'check-type';
+        typeDiv.textContent = typeLabel;
+
+        const dateDiv = document.createElement('div');
+        dateDiv.className = 'check-date';
+        dateDiv.textContent = date;
+
+        detailsDiv.appendChild(typeDiv);
+        detailsDiv.appendChild(dateDiv);
+
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'check-result';
+        resultDiv.setAttribute('aria-hidden', 'true');
+
+        const badgeDiv = document.createElement('div');
+        badgeDiv.className = `risk-badge ${riskClass}`;
+        badgeDiv.textContent = riskLevel;
+
+        const scoreDiv = document.createElement('div');
+        scoreDiv.setAttribute('style', 'font-size: 12px; color: var(--tg-theme-hint-color); margin-top: 4px;');
+        scoreDiv.textContent = `${scorePercent}% Risk`;
+
+        resultDiv.appendChild(badgeDiv);
+        resultDiv.appendChild(scoreDiv);
+
+        item.appendChild(iconDiv);
+        item.appendChild(detailsDiv);
+        item.appendChild(resultDiv);
+
+        container.appendChild(item);
+    });
 }
 
 function viewCheckDetails(checkId) {

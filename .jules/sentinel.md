@@ -45,3 +45,7 @@
 **Vulnerability:** The feedback submission and support reply systems interpolated user-controlled data (`first_name`, `username`, and feedback `text`) directly into Markdown messages without escaping characters. An attacker could intentionally or accidentally submit feedback containing unbalanced markdown characters (like backticks) which causes a `400 Bad Request` from the Telegram API, leading to failed message delivery and a localized DoS.
 **Learning:** All user-controlled text, including seemingly benign fields like names, must be sanitized before being formatted via `parse_mode: 'Markdown'` in Telegram API messages.
 **Prevention:** Always implement an `escapeMarkdown` utility to escape special characters before embedding user variables into Markdown message templates.
+## 2024-05-18 - Cross-Site Scripting (XSS) Vulnerability in UI Rendering
+**Vulnerability:** Found multiple instances of Cross-Site Scripting (XSS) vulnerabilities where user-controlled input (check details) is injected directly into the DOM using `innerHTML` without any sanitization.
+**Learning:** `innerHTML` executes inline scripts and renders raw HTML, which can be easily exploited by malicious users injecting HTML tags or script blocks in their input fields (e.g. check details, types).
+**Prevention:** Avoid `innerHTML` for untrusted content. Use `textContent`, `innerText` or robust DOM manipulation methods (e.g., `document.createElement`) to build UI components safely.
