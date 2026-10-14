@@ -1,0 +1,18 @@
+{
+  "fixtureId": "FIXTURE_055",
+  "timestamp": 1776182455000,
+  "requestPayload": {
+    "checkType": "url_phishing",
+    "target": "https://mock-domain-55.lab.internal/verify",
+    "metadata": {
+      "vendorId": "vendor_55",
+      "retryCount": 1,
+      "safetyScore": 0.85
+    }
+  },
+  "expectedVerdict": {
+    "safe": false,
+    "confidence": 0.95,
+    "cached": true
+  }
+}
