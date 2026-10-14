@@ -1,0 +1,18 @@
+{
+  "fixtureId": "FIXTURE_012",
+  "timestamp": 1776182412000,
+  "requestPayload": {
+    "checkType": "image_deepfake",
+    "target": "https://mock-domain-12.lab.internal/verify",
+    "metadata": {
+      "vendorId": "vendor_12",
+      "retryCount": 0,
+      "safetyScore": 0.88
+    }
+  },
+  "expectedVerdict": {
+    "safe": true,
+    "confidence": 0.95,
+    "cached": true
+  }
+}
