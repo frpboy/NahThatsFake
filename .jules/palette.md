@@ -22,3 +22,6 @@
 ## 2024-08-27 - Balance Grid Layouts
 **Learning:** 2-column grid layouts look unbalanced when they have an odd number of items, leaving dangling single items in the last row.
 **Action:** Always use `:nth-child(odd):last-child { grid-column: 1 / -1; }` on children to ensure odd items take full width and maintain symmetry.
+## 2026-10-14 - Accessible Stat Cards with DOM Reordering
+**Learning:** When replacing non-semantic elements (like `<span>`) with semantic headings (like `<h3>`) for better screen reader accessibility in a flexbox layout, browser default styles (like margins and font weights) often break the visual layout.
+**Action:** Explicitly reset `margin: 0;` and `font-weight: normal;` on the new heading elements, and use `flex-direction: column-reverse;` (along with `margin-top` on the label) to maintain the original visual top-to-bottom layout while reversing the DOM order for logical accessibility.
