@@ -33,3 +33,7 @@
 ## 2026-10-07 - Safe Parallelization of Supabase Queries
 **Learning:** When parallelizing independent Supabase queries (like a user fetch and a subsequent payment idempotency check) using `Promise.all`, it is safe to execute both concurrently because the Supabase JS client returns `{ data, error }` objects rather than throwing exceptions for query-level issues like zero rows. The slight tradeoff of potentially executing a non-blocking query unnecessarily on a failure path is generally outweighed by the halved network latency.
 **Action:** Use `Promise.all` to combine independent database queries into concurrent executions to halve network wait time, but ensure these parallel fetches are placed after cheap authorization and early return checks to avoid wasteful database operations on failure paths.
+
+## 2026-10-07 - Rejected Parallelization of Idempotency Checks
+**Learning:** Parallelizing database lookups for idempotency checks (like checking if a payment exists) alongside other queries without a guaranteed unique constraint or atomic transaction can expose race conditions, compromising data safety. Performance optimizations must never compromise atomicity or integrity.
+**Action:** Revert parallelization of critical state-modifying or idempotency checks unless atomic protections (like DB-level unique constraints) are definitively present.
