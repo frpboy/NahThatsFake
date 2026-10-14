@@ -833,22 +833,25 @@ bot.command('forcegroup', async (ctx) => {
     return;
   }
 
-  const { data: ownerRow } = await supabase
-    .from('users')
-    .select('id')
-    .eq('telegram_user_id', ctx.from.id.toString())
-    .maybeSingle();
+  // ⚡ Bolt: Fetch owner and group profiles concurrently using Promise.all
+  // instead of sequential requests to reduce database round-trip latency by ~50%.
+  const [{ data: ownerRow }, { data: existingGroup }] = await Promise.all([
+    supabase
+      .from('users')
+      .select('id')
+      .eq('telegram_user_id', ctx.from.id.toString())
+      .maybeSingle(),
+    supabase
+      .from('groups')
+      .select('id')
+      .eq('telegram_group_id', groupId)
+      .maybeSingle()
+  ]);
 
   if (!ownerRow) {
     await ctx.reply('❌ Owner record missing in DB.');
     return;
   }
-
-  const { data: existingGroup } = await supabase
-    .from('groups')
-    .select('id')
-    .eq('telegram_group_id', groupId)
-    .maybeSingle();
 
   const premiumUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
   const nowIso = new Date().toISOString();
