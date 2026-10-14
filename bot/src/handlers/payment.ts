@@ -48,28 +48,23 @@ export async function handleSuccessfulPayment(ctx: Context) {
 
   try {
     // 1. Find user UUID
-    // ⚡ Bolt: Execute independent queries concurrently using Promise.all
-    const [
-      { data: userData },
-      { data: existingPayment, error: existingError }
-    ] = await Promise.all([
-      supabase
-        .from('users')
-        .select('id, permanent_credits')
-        .eq('telegram_user_id', user.id.toString())
-        .single(),
-      // 🛡️ Sentinel: Idempotency check before inserting payment
-      supabase
-        .from('payments')
-        .select('id')
-        .eq('payment_id', chargeId)
-        .maybeSingle()
-    ]);
+    const { data: userData } = await supabase
+      .from('users')
+      .select('id, permanent_credits')
+      .eq('telegram_user_id', user.id.toString())
+      .single();
 
     if (!userData) {
       console.error('User not found for payment:', user.id);
       return;
     }
+
+    // 🛡️ Sentinel: Idempotency check before inserting payment
+    const { data: existingPayment, error: existingError } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('payment_id', chargeId)
+      .maybeSingle();
 
     if (existingError) {
       console.error('Idempotency check failed:', existingError);

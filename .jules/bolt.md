@@ -29,6 +29,6 @@
 ## 2025-02-12 - Concurrent Supabase Queries
 **Learning:** Found multiple independent Supabase count queries (`users` and `checks`) being executed sequentially using `await supabase...` sequentially in a command handler.
 **Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
-## 2026-10-04 - Promise.all for independent Supabase queries
-**Learning:** Found sequential independent database queries (fetching the user to get the uuid, followed by fetching existing payment for idempotency) in payment webhooks and API routes. Since Supabase library returns an object `{data, error}` and does not throw exceptions when zero rows are found, executing these concurrently using `Promise.all` is safe and reduces network wait time by half.
-**Action:** When multiple independent database queries are needed (like user lookup + idempotency check), always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
+## 2026-10-04 - Concurrency optimization limitations on payments
+**Learning:** In a previous PR I attempted to parallelize database lookups using `Promise.all` for finding a user and checking payment idempotency. However, since the current codebase does not have a unique database constraint on `payments.payment_id` and the fulfillment path is not atomically protected, simply parallelizing the queries does not establish a safe idempotent transaction. This could allow multiple requests with the same charge ID to fulfill credits if executed simultaneously before either transaction inserts the payment record.
+**Action:** Before extracting and parallelizing independent queries, ensure the operation is backed by safe, atomic uniqueness constraints.
