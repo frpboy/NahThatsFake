@@ -7,12 +7,35 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 require('dotenv').config();
 
+function timingSafeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://nahthatsfake.vercel.app').split(',');
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // Allow requests with no origin
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost')) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  allowedHeaders: ['Content-Type', 'X-Telegram-Init-Data']
+}));
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Supabase client
@@ -28,6 +51,8 @@ const razorpay = new Razorpay({
 });
 
 // Telegram Init Data Validation Middleware
+let cachedSecretKey = null;
+
 const validateTelegramData = (req, res, next) => {
   const initData = req.header('X-Telegram-Init-Data');
   
@@ -43,9 +68,22 @@ const validateTelegramData = (req, res, next) => {
 
   const urlParams = new URLSearchParams(initData);
   const hash = urlParams.get('hash');
+  const authDateStr = urlParams.get('auth_date');
   
   if (!hash) {
     return res.status(401).json({ error: 'Missing hash in init data' });
+  }
+
+  // 🛡️ Sentinel: Enforce auth_date expiration to prevent replay attacks
+  if (!authDateStr) {
+    return res.status(401).json({ error: 'Missing auth_date in init data' });
+  }
+
+  const authDate = parseInt(authDateStr, 10);
+  const now = Math.floor(Date.now() / 1000);
+  // 24 hours in seconds
+  if (now - authDate > 86400) {
+    return res.status(401).json({ error: 'Telegram init data expired' });
   }
 
   urlParams.delete('hash');
@@ -57,17 +95,27 @@ const validateTelegramData = (req, res, next) => {
   
   const dataCheckString = params.sort().join('\n');
   
-  const secretKey = crypto
-    .createHmac('sha256', 'WebAppData')
-    .update(process.env.BOT_TOKEN)
-    .digest();
-    
+  // 🛡️ Sentinel: Fail securely if BOT_TOKEN is missing instead of using a fallback string
+  if (!process.env.BOT_TOKEN) {
+    console.error('CRITICAL: BOT_TOKEN is not configured for Telegram validation');
+    return res.status(500).json({ error: 'Internal server error: Authentication misconfigured' });
+  }
+
+  // ⚡ Bolt: Cache the expensive HMAC computation of the static BOT_TOKEN
+  // to avoid redundant cryptographic operations on every single API request.
+  if (!cachedSecretKey) {
+    cachedSecretKey = crypto
+      .createHmac('sha256', 'WebAppData')
+      .update(process.env.BOT_TOKEN)
+      .digest();
+  }
+
   const calculatedHash = crypto
-    .createHmac('sha256', secretKey)
+    .createHmac('sha256', cachedSecretKey)
     .update(dataCheckString)
     .digest('hex');
     
-  if (calculatedHash === hash) {
+  if (timingSafeCompare(calculatedHash, hash)) {
     // Valid data
     // Parse user data to attach to req
     const userStr = urlParams.get('user');
@@ -93,28 +141,44 @@ app.get('/api/health', (req, res) => {
 // Admin Stats Endpoint (Protected)
 app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
   try {
-    // Check if user is admin
-    if (req.telegramUser) {
-        // In a real app, verify admin status from DB using req.telegramUser.id
-        // For now, we trust the DB lookup below or environment
+    const userId = req.telegramUser ? req.telegramUser.id : null;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    // 🛡️ Sentinel: Ensure only owners and admins can access stats
+    if (userId.toString() !== process.env.OWNER_TELEGRAM_ID) {
+      const { data: user } = await supabase
+        .from('users')
+        .select('role')
+        .eq('telegram_user_id', userId.toString())
+        .single();
+
+      if (!user || (user.role !== 'admin' && user.role !== 'owner')) {
+        return res.status(403).json({ error: 'Forbidden: Admin access required' });
+      }
     }
-    
-    const { data: users, error: usersError } = await supabase.from('users').select('id, is_banned');
-    const { data: checks, error: checksError } = await supabase.from('checks').select('id');
-    const { data: revenue, error: revenueError } = await supabase.rpc('get_revenue_stats'); // Need to create RPC or view query
-    
-    // For now, manual query for revenue
-    const { data: payments } = await supabase.from('payments').select('amount_inr, amount_stars, status').eq('status', 'success');
+
+    // ⚡ Bolt: Fetch DB-level counts concurrently instead of pulling all rows into memory
+    const [
+      { count: usersCount, error: usersError },
+      { count: bannedCount, error: bannedError },
+      { count: checksCount, error: checksError },
+      { data: payments, error: paymentsError }
+    ] = await Promise.all([
+      supabase.from('users').select('*', { count: 'exact', head: true }),
+      supabase.from('users').select('*', { count: 'exact', head: true }).eq('is_banned', true),
+      supabase.from('checks').select('*', { count: 'exact', head: true }),
+      supabase.from('payments').select('amount_inr, amount_stars').eq('status', 'success')
+    ]);
     
     const revenueInr = payments?.reduce((acc, curr) => acc + (curr.amount_inr || 0), 0) / 100 || 0;
     const revenueStars = payments?.reduce((acc, curr) => acc + (curr.amount_stars || 0), 0) || 0;
 
-    if (usersError || checksError) throw new Error('Database error');
+    if (usersError || bannedError || checksError || paymentsError) throw new Error('Database error');
 
     res.json({
-      users: users.length,
-      banned: users.filter(u => u.is_banned).length,
-      checks: checks.length,
+      users: usersCount || 0,
+      banned: bannedCount || 0,
+      checks: checksCount || 0,
       revenue: {
         inr: revenueInr,
         stars: revenueStars
@@ -129,24 +193,23 @@ app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
 // User Profile Endpoint
 app.get('/api/user/profile', validateTelegramData, async (req, res) => {
   // Prefer validated user ID from middleware, fallback to query for dev/legacy
-  const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
+  const userId = req.telegramUser ? req.telegramUser.id : null;
   
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
   try {
+    // ⚡ Bolt: Fetch user profile and check count concurrently in a single query
+    // using resource embedding to reduce database round-trip latency.
     const { data: user } = await supabase
       .from('users')
-      .select('*')
+      .select('*, checks(count)')
       .eq('telegram_user_id', userId.toString()) // Ensure string comparison
       .single();
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Get check count manually for now
-    const { count: checkCount } = await supabase
-      .from('checks')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id);
+    const checkCount = user.checks && user.checks.length > 0 ? user.checks[0].count : 0;
+    delete user.checks; // Maintain flat API response shape
 
     res.json({ ...user, total_checks: checkCount });
   } catch (error) {
@@ -157,7 +220,7 @@ app.get('/api/user/profile', validateTelegramData, async (req, res) => {
 
 // User Role Endpoint
 app.get('/api/user/role', validateTelegramData, async (req, res) => {
-    const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
+    const userId = req.telegramUser ? req.telegramUser.id : null;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
     try {
@@ -181,21 +244,28 @@ app.get('/api/user/role', validateTelegramData, async (req, res) => {
 
 // User Checks Endpoint
 app.get('/api/user/checks', validateTelegramData, async (req, res) => {
-    const userId = req.telegramUser ? req.telegramUser.id : req.query.userId;
+    const userId = req.telegramUser ? req.telegramUser.id : null;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
     try {
-      const { data: user } = await supabase.from('users').select('id').eq('telegram_user_id', userId.toString()).single();
+      // ⚡ Bolt: Fetch user and their recent checks in a single query
+      // using parent-to-child resource embedding instead of sequential queries.
+      // This saves a database round-trip while maintaining 404 behavior.
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('id, checks(*)')
+        .eq('telegram_user_id', userId.toString())
+        .order('created_at', { ascending: false, referencedTable: 'checks' })
+        .limit(10, { referencedTable: 'checks' })
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
       if (!user) return res.status(404).json({ error: 'User not found' });
 
-      const { data: checks } = await supabase
-        .from('checks')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
-  
-      res.json({ checks });
+      res.json({ checks: user.checks || [] });
     } catch (error) {
       console.error('Checks error:', error);
       res.status(500).json({ error: 'Failed to fetch checks' });
@@ -222,12 +292,17 @@ function getPlanDetails(planId) {
 }
 
 // 1. Create Razorpay Order
-app.post('/api/payment/create-razorpay-order', async (req, res) => {
-  const { userId, planId, amount } = req.body;
+app.post('/api/payment/create-razorpay-order', validateTelegramData, async (req, res) => {
+  const { planId } = req.body;
+  const userId = req.telegramUser ? req.telegramUser.id : null;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
   
+  const planDetails = getPlanDetails(planId);
+  if (!planDetails) return res.status(400).json({ error: 'Invalid plan' });
+
   try {
     const options = {
-      amount: amount, // amount in the smallest currency unit (paise)
+      amount: planDetails.amount, // derive amount from trusted server-side config
       currency: "INR",
       receipt: `receipt_${userId}_${Date.now()}`,
       notes: {
@@ -252,17 +327,40 @@ app.post('/api/payment/create-razorpay-order', async (req, res) => {
 });
 
 // 2. Verify Razorpay Payment
-app.post('/api/payment/verify-razorpay', async (req, res) => {
-  const { userId, planId, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) => {
+  const { planId, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
+  const userId = req.telegramUser ? req.telegramUser.id : null;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+  if (!process.env.RAZORPAY_KEY_SECRET) {
+    return res.status(500).json({ error: 'Razorpay secret not configured' });
+  }
 
   const generated_signature = crypto
     .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-    .update(razorpay_order_id + "|" + razorpay_payment_id)
+    .update((razorpay_order_id || '') + "|" + (razorpay_payment_id || ''))
     .digest('hex');
 
-  if (generated_signature === razorpay_signature) {
+  if (timingSafeCompare(generated_signature, razorpay_signature)) {
     // Payment verified
     try {
+      // 🛡️ Sentinel: Fetch authentic order details from Razorpay to prevent parameter spoofing
+      const razorpayOrder = await razorpay.orders.fetch(razorpay_order_id);
+      if (!razorpayOrder || !razorpayOrder.notes) {
+        throw new Error('Invalid order metadata from Razorpay');
+      }
+
+      const authenticPlanId = razorpayOrder.notes.planId;
+      const authenticUserId = razorpayOrder.notes.telegramUserId;
+
+      if (authenticPlanId !== planId || authenticUserId?.toString() !== userId.toString()) {
+        console.error('Parameter spoofing detected:', {
+           clientPlan: planId, authenticPlan: authenticPlanId,
+           clientUser: userId, authenticUser: authenticUserId
+        });
+        throw new Error('Payment metadata mismatch');
+      }
+
       // Find user UUID from telegram ID
       const { data: user } = await supabase
         .from('users')
@@ -275,8 +373,22 @@ app.post('/api/payment/verify-razorpay', async (req, res) => {
       const planDetails = getPlanDetails(planId);
       if (!planDetails) throw new Error('Invalid plan');
 
+      // 🛡️ Sentinel: Idempotency check before inserting payment
+      const { data: existingPayment, error: existingError } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('payment_id', razorpay_payment_id)
+        .maybeSingle();
+
+      if (existingError) {
+         throw new Error('Database error during idempotency check');
+      }
+      if (existingPayment) {
+         return res.json({ success: true, message: 'Payment already processed' });
+      }
+
       // Record payment
-      await supabase.from('payments').insert({
+      const { error: insertError } = await supabase.from('payments').insert({
         user_id: user.id,
         plan_id: planId,
         amount_inr: planDetails.amount,
@@ -287,6 +399,10 @@ app.post('/api/payment/verify-razorpay', async (req, res) => {
         premium_from: new Date().toISOString(),
         premium_until: planDetails.is_credit ? null : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
       });
+
+      if (insertError) {
+         throw new Error('Failed to record payment');
+      }
 
       if (planDetails.is_credit) {
         // Add credits
@@ -316,13 +432,26 @@ app.post('/api/payment/verify-razorpay', async (req, res) => {
 });
 
 // 3. Create Stars Invoice (Proxy to Bot)
-app.post('/api/payment/create-stars-invoice', async (req, res) => {
-  const { userId, planId, amount } = req.body;
+app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, res) => {
+  const { planId } = req.body;
+  const userId = req.telegramUser ? req.telegramUser.id : null;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
   const BOT_TOKEN = process.env.BOT_TOKEN;
 
   if (!BOT_TOKEN) {
     return res.status(500).json({ error: 'Bot token not configured' });
   }
+
+  const starsAmountMap = {
+    'ind_weekly': 150,
+    'ind_monthly': 500,
+    'ind_annual': 4000,
+    'credits_50': 250,
+    'credits_100': 450
+  };
+
+  const amount = starsAmountMap[planId];
+  if (!amount) return res.status(400).json({ error: 'Invalid plan' });
 
   try {
     let title = 'Premium';
@@ -343,7 +472,7 @@ app.post('/api/payment/create-stars-invoice', async (req, res) => {
         payload: JSON.stringify({ userId, planId, type: 'stars' }), 
         provider_token: "", // Empty for Stars
         currency: "XTR",
-        prices: [{ label: title, amount: amount }] // amount in Stars
+        prices: [{ label: title, amount: amount }] // derive amount from trusted mapping
       })
     });
 
@@ -363,20 +492,21 @@ app.post('/api/payment/create-stars-invoice', async (req, res) => {
 
 // 4. Razorpay Webhook (Server-to-Server)
 app.post('/api/payment/razorpay-webhook', async (req, res) => {
-  const secret = process.env.RAZORPAY_KEY_SECRET;
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
   
   // Validate signature
   const signature = req.headers['x-razorpay-signature'];
   if (!signature) return res.status(400).send('Missing signature');
+  if (!secret) return res.status(500).send('Webhook secret not configured');
   
-  const shasum = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || secret);
-  shasum.update(JSON.stringify(req.body));
+  const shasum = crypto.createHmac('sha256', secret);
+  shasum.update(req.rawBody || '');
   const digest = shasum.digest('hex');
 
   // If testing, log both for debugging (remove in production)
   // console.log('Webhook Debug:', { digest, signature, secret: !!secret });
 
-  if (digest === signature) {
+  if (timingSafeCompare(digest, signature)) {
     // Verified
     const event = req.body.event;
     const payload = req.body.payload;
@@ -400,8 +530,18 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
             .single();
 
           if (user) {
-            // Idempotency check
-            if (user.last_payment_id === payment.id) {
+            // 🛡️ Sentinel: Idempotency check (database-backed instead of user.last_payment_id)
+            const { data: existingPayment, error: existingError } = await supabase
+              .from('payments')
+              .select('id')
+              .eq('payment_id', payment.id)
+              .maybeSingle();
+
+            if (existingError) {
+               console.error('Idempotency check failed:', existingError);
+               return res.status(500).json({ error: 'Database error' });
+            }
+            if (existingPayment) {
                console.log('Payment already processed:', payment.id);
                return res.json({ status: 'ok' });
             }
