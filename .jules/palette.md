@@ -19,6 +19,9 @@
 ## 2025-02-18 - Semantic Headings in Flexbox Layouts
 **Learning:** Replacing non-semantic inline elements (like `<span>`) with heading elements (like `<h3>`) within flexbox or grid layouts can break the alignment due to default browser margins on headings.
 **Action:** When improving semantic accessibility by upgrading to heading elements in structured layouts, always explicitly reset the margins (e.g., `margin: 0;`) on the new headings to maintain visual parity.
+## $(date +%Y-%m-%d) - CSS Grid Odd Elements Balance
+**Learning:** When using CSS Grid for multi-column layouts (e.g., a 2-column grid) where an odd number of elements may leave the last row unbalanced, it can create a visually jarring hanging element.
+**Action:** Use the `:nth-child(odd):last-child` selector with `grid-column: 1 / -1;` to make the final hanging element gracefully span the full width of the grid, maintaining a visually balanced UI without complex JavaScript.
 ## 2026-05-07 - Async Button State Improvements
 **Learning:** Found that long-running network requests (like loading paginated check history) lack visual feedback during the loading phase. This can cause duplicate submissions and confusion.
 **Action:** Implemented a standard async loading state for the 'Load More' button that disables the button, updates text to 'Loading...', and adds `aria-busy="true"`. Also introduced `.button:disabled` states in CSS to ensure the UI clearly reflects when buttons are inactive.
@@ -43,6 +46,3 @@
 ## 2024-08-04 - Improve Risk Badge Contrast
 **Learning:** Default Material Design 500-level colors on 10% opacity backgrounds fail WCAG AA contrast for text.
 **Action:** Use 700-level colors for light mode and keep 300-level or 500-level for dark mode to ensure text is readable.
-## $(date +%Y-%m-%d) - CSS Grid Odd Elements Balance
-**Learning:** When using CSS Grid for multi-column layouts (e.g., a 2-column grid) where an odd number of elements may leave the last row unbalanced, it can create a visually jarring hanging element.
-**Action:** Use the `:nth-child(odd):last-child` selector with `grid-column: 1 / -1;` to make the final hanging element gracefully span the full width of the grid, maintaining a visually balanced UI without complex JavaScript.
