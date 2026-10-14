@@ -1,5 +1,6 @@
 import { Context } from 'grammy';
 import { supabase } from '../supabase';
+import { escapeMarkdown } from '../utils/markdown';
 
 export async function handleLinkGroup(ctx: Context) {
   if (ctx.chat?.type !== 'group' && ctx.chat?.type !== 'supergroup') {
@@ -70,7 +71,7 @@ Only the original linker can manage this subscription.`);
       .maybeSingle();
 
     if (userLinkedGroup) {
-      await ctx.reply(`❌ You have already linked your plan to another group: *${userLinkedGroup.group_name}*
+      await ctx.reply(`❌ You have already linked your plan to another group: *${escapeMarkdown(userLinkedGroup.group_name || 'Unknown group')}*
       
 You can only link one group per subscription. Unlink the old group first (or contact support).`, { parse_mode: 'Markdown' });
       return;
