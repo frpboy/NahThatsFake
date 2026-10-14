@@ -51,7 +51,7 @@ export async function processLinkCheck(ctx: Context) {
       }
     }
 
-    const creditSourceRaw = isImpersonating ? 'owner' : await consumeCredit(actingTelegramUserId, 'daily');
+    const creditSourceRaw = isImpersonating ? 'owner' : await consumeCredit(actingTelegramUserId, 'daily', dbUser);
     if (!creditSourceRaw) {
       await ctx.reply(
 `🚫 *No credits left*
@@ -128,20 +128,16 @@ export async function processLinkCheck(ctx: Context) {
     const scorePercent = (result.score * 100).toFixed(1);
     
     // Get Referral Link for Share
-    const { data: userRef } = await supabase
-      .from('users')
-      .select('referral_code')
-      .eq('telegram_user_id', actingTelegramUserId)
-      .single();
-
-    const refCode = userRef?.referral_code || '';
+    const refCode = dbUser?.referral_code || '';
     const botUsername = ctx.me.username;
     const shareLink = `https://t.me/${botUsername}?start=${refCode}`;
     const shareText = `I just checked this link with @${botUsername}!\n\nLink: ${url}\nResult: ${riskEmoji} ${result.risk_level} (${scorePercent}% Risk)\n\nCheck yours here: ${shareLink}`;
 
+    const safeUrl = url.replace(/`/g, '%60');
+
     await ctx.reply(`${riskEmoji} *Link Check Result*
 
-URL: \`${url}\`
+URL: \`${safeUrl}\`
 Risk Level: *${result.risk_level}*
 Threat Probability: *${scorePercent}%*
 
