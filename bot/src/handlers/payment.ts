@@ -50,7 +50,7 @@ export async function handleSuccessfulPayment(ctx: Context) {
     // 1. Find user UUID
     const { data: userData } = await supabase
       .from('users')
-      .select('id, permanent_credits')
+      .select('id')
       .eq('telegram_user_id', user.id.toString())
       .single();
 
@@ -59,66 +59,31 @@ export async function handleSuccessfulPayment(ctx: Context) {
       return;
     }
 
-    // 🛡️ Sentinel: Idempotency check before inserting payment
-    const { data: existingPayment, error: existingError } = await supabase
-      .from('payments')
-      .select('id')
-      .eq('payment_id', chargeId)
-      .maybeSingle();
-
-    if (existingError) {
-      console.error('Idempotency check failed:', existingError);
-      return;
-    }
-    if (existingPayment) {
-      console.log('Payment already processed:', chargeId);
-      return;
-    }
-
-    // 2. Record payment
     const premiumUntil = planDetails.days 
       ? new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
-    const { error: insertError } = await supabase.from('payments').insert({
-      user_id: userData.id,
-      plan_id: planId,
-      amount_stars: amountStars,
-      payment_method: 'stars',
-      payment_id: chargeId,
-      status: 'success',
-      premium_from: new Date().toISOString(),
-      premium_until: premiumUntil
+    const { error: fulfillmentError } = await supabase.rpc('fulfill_payment', {
+      p_user_id: userData.id,
+      p_plan_id: planId,
+      p_payment_id: chargeId,
+      p_payment_method: 'stars',
+      p_amount_stars: amountStars,
+      p_premium_until: premiumUntil,
+      p_credits: planDetails.credits || 0
     });
-
-    if (insertError) {
-      console.error('Failed to record payment:', insertError);
+    if (fulfillmentError) {
+      console.error('Failed to fulfill payment:', fulfillmentError);
       return;
     }
 
-    // 3. Update user
     if (planDetails.credits) {
-      // Credit Pack: Add credits, don't change plan
-      await supabase.from('users').update({
-        permanent_credits: (userData.permanent_credits || 0) + planDetails.credits,
-        last_payment_id: chargeId,
-        last_paid_at: new Date().toISOString()
-      }).eq('id', userData.id);
-
       await ctx.reply(`🎉 *Payment Successful!*
 
 Added ${planDetails.credits} permanent credits to your account.
 Use /credits to check your balance.`, { parse_mode: 'Markdown' });
 
     } else {
-      // Subscription: Update plan
-      await supabase.from('users').update({
-        plan: planId,
-        premium_until: premiumUntil,
-        last_payment_id: chargeId,
-        last_paid_at: new Date().toISOString()
-      }).eq('id', userData.id);
-
       await ctx.reply(`🎉 *Payment Successful!*
 
 You are now a Premium member.

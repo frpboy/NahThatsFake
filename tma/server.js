@@ -46,6 +46,17 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
+let paymentSupabase;
+function getPaymentSupabase() {
+  if (!paymentSupabase) {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for payment fulfillment');
+    }
+    paymentSupabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  }
+  return paymentSupabase;
+}
+
 // Razorpay client
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -363,64 +374,35 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
         throw new Error('Payment metadata mismatch');
       }
 
-      // Find user UUID from telegram ID
-      const { data: user } = await supabase
-        .from('users')
-        .select('id, permanent_credits')
-        .eq('telegram_user_id', userId.toString())
-        .single();
-        
-      if (!user) throw new Error('User not found');
-
       const planDetails = getPlanDetails(planId);
       if (!planDetails) throw new Error('Invalid plan');
+      if (razorpayOrder.currency !== 'INR' || razorpayOrder.amount !== planDetails.amount) {
+        throw new Error('Payment amount mismatch');
+      }
 
-      // 🛡️ Sentinel: Idempotency check before inserting payment
-      const { data: existingPayment, error: existingError } = await supabase
-        .from('payments')
+      const paymentClient = getPaymentSupabase();
+      const { data: user } = await paymentClient
+        .from('users')
         .select('id')
-        .eq('payment_id', razorpay_payment_id)
-        .maybeSingle();
+        .eq('telegram_user_id', userId.toString())
+        .single();
+      if (!user) throw new Error('User not found');
 
-      if (existingError) {
-         throw new Error('Database error during idempotency check');
-      }
-      if (existingPayment) {
-         return res.json({ success: true, message: 'Payment already processed' });
-      }
-
-      // Record payment
-      const { error: insertError } = await supabase.from('payments').insert({
-        user_id: user.id,
-        plan_id: planId,
-        amount_inr: planDetails.amount,
-        payment_method: 'razorpay',
-        payment_id: razorpay_payment_id,
-        order_id: razorpay_order_id,
-        status: 'success',
-        premium_from: new Date().toISOString(),
-        premium_until: planDetails.is_credit ? null : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
+      const premiumUntil = planDetails.is_credit
+        ? null
+        : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString();
+      const { error: fulfillmentError } = await paymentClient.rpc('fulfill_payment', {
+        p_user_id: user.id,
+        p_plan_id: planId,
+        p_payment_id: razorpay_payment_id,
+        p_payment_method: 'razorpay',
+        p_amount_inr: planDetails.amount,
+        p_order_id: razorpay_order_id,
+        p_premium_until: premiumUntil,
+        p_credits: planDetails.is_credit ? planDetails.credits : 0
       });
-
-      if (insertError) {
-         throw new Error('Failed to record payment');
-      }
-
-      if (planDetails.is_credit) {
-        // Add credits
-        await supabase.from('users').update({
-          permanent_credits: (user.permanent_credits || 0) + planDetails.credits,
-          last_payment_id: razorpay_payment_id,
-          last_paid_at: new Date().toISOString()
-        }).eq('id', user.id);
-      } else {
-        // Update subscription
-        await supabase.from('users').update({
-          plan: planId,
-          premium_until: new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString(),
-          last_payment_id: razorpay_payment_id,
-          last_paid_at: new Date().toISOString()
-        }).eq('id', user.id);
+      if (fulfillmentError) {
+        throw new Error('Failed to fulfill payment');
       }
 
       res.json({ success: true });
@@ -524,62 +506,37 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
         const { telegramUserId, planId } = payment.notes || order.notes || {};
         
         if (telegramUserId && planId) {
-          // Process fulfillment (duplicate logic from verify endpoint)
-          const { data: user } = await supabase
+          const planDetails = getPlanDetails(planId);
+          if (!planDetails || payment.currency !== 'INR' || order.currency !== 'INR'
+              || payment.amount !== planDetails.amount || order.amount !== planDetails.amount) {
+            throw new Error('Webhook payment metadata mismatch');
+          }
+
+          const paymentClient = getPaymentSupabase();
+          const { data: user } = await paymentClient
             .from('users')
-            .select('id, permanent_credits, last_payment_id')
+            .select('id')
             .eq('telegram_user_id', telegramUserId.toString())
             .single();
 
           if (user) {
-            // 🛡️ Sentinel: Idempotency check (database-backed instead of user.last_payment_id)
-            const { data: existingPayment, error: existingError } = await supabase
-              .from('payments')
-              .select('id')
-              .eq('payment_id', payment.id)
-              .maybeSingle();
-
-            if (existingError) {
-               console.error('Idempotency check failed:', existingError);
-               return res.status(500).json({ error: 'Database error' });
+            const premiumUntil = planDetails.is_credit
+              ? null
+              : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString();
+            const { error: fulfillmentError } = await paymentClient.rpc('fulfill_payment', {
+              p_user_id: user.id,
+              p_plan_id: planId,
+              p_payment_id: payment.id,
+              p_payment_method: 'razorpay',
+              p_amount_inr: payment.amount,
+              p_order_id: order.id,
+              p_premium_until: premiumUntil,
+              p_credits: planDetails.is_credit ? planDetails.credits : 0
+            });
+            if (fulfillmentError) {
+              throw new Error('Failed to fulfill webhook payment');
             }
-            if (existingPayment) {
-               console.log('Payment already processed:', payment.id);
-               return res.json({ status: 'ok' });
-            }
-
-            const planDetails = getPlanDetails(planId);
-            if (planDetails) {
-              // Insert Payment Record
-              await supabase.from('payments').insert({
-                user_id: user.id,
-                plan_id: planId,
-                amount_inr: payment.amount,
-                payment_method: 'razorpay_webhook',
-                payment_id: payment.id,
-                order_id: order.id,
-                status: 'success',
-                premium_from: new Date().toISOString(),
-                premium_until: planDetails.is_credit ? null : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString()
-              });
-
-              // Update User
-              if (planDetails.is_credit) {
-                await supabase.from('users').update({
-                  permanent_credits: (user.permanent_credits || 0) + planDetails.credits,
-                  last_payment_id: payment.id,
-                  last_paid_at: new Date().toISOString()
-                }).eq('id', user.id);
-              } else {
-                await supabase.from('users').update({
-                  plan: planId,
-                  premium_until: new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString(),
-                  last_payment_id: payment.id,
-                  last_paid_at: new Date().toISOString()
-                }).eq('id', user.id);
-              }
-              console.log(`Webhook: Fulfilled ${planId} for user ${telegramUserId}`);
-            }
+            console.log(`Webhook: Fulfilled ${planId} for user ${telegramUserId}`);
           }
         }
       }
