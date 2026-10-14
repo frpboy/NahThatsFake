@@ -1,0 +1,19 @@
+/**
+ * Data Transformation Pipeline Stage 22
+ */
+
+function transformPayload22(rawRecord, config = {}) {
+  if (!rawRecord || typeof rawRecord !== 'object') {
+    return { success: false, data: null, stage: 22 };
+  }
+  const cloned = { ...rawRecord };
+  cloned.stageApplied = 22;
+  cloned.processedAt = Date.now();
+  if (config.maskSensitive) {
+    if (cloned.token) cloned.token = '***REDACTED***';
+    if (cloned.secret) cloned.secret = '***REDACTED***';
+  }
+  return { success: true, data: cloned, stage: 22 };
+}
+
+module.exports = { transformPayload22 };
