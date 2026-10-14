@@ -84,9 +84,12 @@
 </head>
 <body>
     <div class="container">
-        <h1><span aria-hidden="true">⭐</span> Upgrade to Pro</h1>
-        <p>Unlock unlimited checks & advanced features!</p>
+        <header>
+            <h1><span aria-hidden="true">⭐</span> Upgrade to Pro</h1>
+            <p>Unlock unlimited checks & advanced features!</p>
+        </header>
 
+        <main>
         <h2 class="section-title">Individual Plans</h2>
 
         <!-- Weekly Plan -->
@@ -147,6 +150,7 @@
         </div>
 
         <div id="status-message" class="hidden" role="alert" aria-live="assertive"></div>
+        </main>
     </div>
 
     <script>
@@ -299,7 +303,16 @@
 
         function setStatus(msg, isError) {
             const el = document.getElementById('status-message');
-            el.innerText = msg;
+            el.textContent = '';
+            if (msg.startsWith('🎉 ')) {
+                const icon = document.createElement('span');
+                icon.setAttribute('aria-hidden', 'true');
+                icon.textContent = '🎉 ';
+                el.appendChild(icon);
+                el.appendChild(document.createTextNode(msg.slice(3)));
+            } else {
+                el.appendChild(document.createTextNode(msg));
+            }
             el.className = isError ? "error" : "status";
             el.setAttribute('role', isError ? 'alert' : 'status');
             el.setAttribute('aria-live', isError ? 'assertive' : 'polite');
