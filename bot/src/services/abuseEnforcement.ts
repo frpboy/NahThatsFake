@@ -9,23 +9,41 @@ const ABUSE_THRESHOLDS = {
 };
 
 export async function checkAbuseAndEnforce(userId: string) {
-  // Get user's abuse flags
-  const { data: flags } = await supabase
+  const { count: totalFlags, error: totalFlagsError } = await supabase
     .from('abuse_flags')
-    .select('*')
+    .select('*', { count: 'exact', head: true })
     .eq('user_id', userId);
 
-  if (!flags || flags.length === 0) return;
+  if (totalFlagsError) {
+    console.error('[Abuse Enforcement] Failed to count flags:', totalFlagsError);
+    return;
+  }
 
-  const totalFlags = flags.length;
-  
-  // Count flags in last 24h
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const flagsToday = flags.filter(f => new Date(f.created_at) > oneDayAgo).length;
+  if (!totalFlags) return;
 
-  // Count flags in last 7 days
-  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const flagsThisWeek = flags.filter(f => new Date(f.created_at) > oneWeekAgo).length;
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [todayResult, weekResult] = await Promise.all([
+    supabase
+      .from('abuse_flags')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gt('created_at', oneDayAgo),
+    supabase
+      .from('abuse_flags')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gt('created_at', oneWeekAgo)
+  ]);
+
+  if (todayResult.error || weekResult.error) {
+    console.error('[Abuse Enforcement] Failed to count recent flags:', todayResult.error || weekResult.error);
+    return;
+  }
+
+  const flagsToday = todayResult.count || 0;
+  const flagsThisWeek = weekResult.count || 0;
 
   let actionTaken = null;
   let reason = '';
