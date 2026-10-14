@@ -126,7 +126,7 @@ app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
       supabase.from('users').select('*', { count: 'exact', head: true }),
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('is_banned', true),
       supabase.from('checks').select('*', { count: 'exact', head: true }),
-      supabase.rpc('get_total_revenue')
+      getPaymentSupabase().rpc('get_total_revenue')
     ]);
 
     if (usersError || bannedError || checksError || revenueError) throw new Error('Database error');
