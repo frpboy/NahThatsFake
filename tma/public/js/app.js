@@ -276,7 +276,41 @@ async function loadChecks() {
     } catch (error) {
         console.error('Failed to load checks:', error);
         if (currentPage === 1) {
-            document.getElementById('recent-checks').innerHTML = '<div class="loading">Unable to load checks</div>';
+            const container = document.getElementById('recent-checks');
+            container.textContent = '';
+
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'loading';
+            errorDiv.setAttribute('role', 'alert');
+            errorDiv.setAttribute('aria-live', 'assertive');
+
+            const iconDiv = document.createElement('div');
+            iconDiv.setAttribute('aria-hidden', 'true');
+            iconDiv.style.fontSize = '2rem';
+            iconDiv.style.marginBottom = '8px';
+            iconDiv.textContent = '⚠️';
+            errorDiv.appendChild(iconDiv);
+
+            const msgP = document.createElement('p');
+            msgP.style.marginBottom = '16px';
+            msgP.textContent = 'Unable to load checks.';
+            errorDiv.appendChild(msgP);
+
+            const retryBtn = document.createElement('button');
+            retryBtn.className = 'button button-secondary';
+            retryBtn.style.maxWidth = '200px';
+            retryBtn.style.margin = '0 auto';
+
+            const btnIcon = document.createElement('span');
+            btnIcon.setAttribute('aria-hidden', 'true');
+            btnIcon.textContent = '🔄 ';
+            retryBtn.appendChild(btnIcon);
+
+            retryBtn.appendChild(document.createTextNode('Try Again'));
+            retryBtn.onclick = () => loadChecks();
+
+            errorDiv.appendChild(retryBtn);
+            container.appendChild(errorDiv);
         }
     }
 }
@@ -291,38 +325,79 @@ function renderChecks() {
                 <div aria-hidden="true" style="font-size: 2rem; margin-bottom: 8px;">🕵️</div>
                 <p style="margin-bottom: 12px; color: var(--tg-theme-text-color);">No checks yet</p>
                 <p style="font-size: 13px; margin-bottom: 16px;">Forward a message or link to the bot to get started!</p>
-                <button class="button button-secondary" onclick="openBot()" style="max-width: 200px; margin: 0 auto; padding: 10px 16px; font-size: 14px;">🤖 Open Bot Chat</button>
+                <button class="button button-secondary" onclick="openBot()" style="max-width: 200px; margin: 0 auto; padding: 10px 16px; font-size: 14px;"><span aria-hidden="true">🤖</span> Open Bot Chat</button>
             </div>
         `;
         return;
     }
 
-    const html = checks.map(check => {
+    if (currentPage === 1) {
+        container.innerHTML = '';
+    }
+
+    checks.forEach(check => {
         const icon = check.check_type === 'image' ? '🖼️' : '🔗';
-        const riskClass = `risk-${(check.risk_level || 'low').toLowerCase()}`;
+        const riskLevel = check.risk_level || 'UNKNOWN';
+        const riskClass = `risk-${riskLevel.toLowerCase()}`;
         const scorePercent = check.score ? Math.round(check.score * 100) : 0;
         const date = new Date(check.created_at).toLocaleDateString();
+        const typeLabel = check.check_type === 'image' ? 'Image Analysis' : 'Link Analysis';
 
-        return `
-            <div class="check-item" role="button" tabindex="0" onclick="viewCheckDetails('${check.id}')" onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); viewCheckDetails('${check.id}'); }">
-                <div class="check-icon ${check.check_type}">${icon}</div>
-                <div class="check-details">
-                    <div class="check-type">${check.check_type === 'image' ? 'Image Analysis' : 'Link Analysis'}</div>
-                    <div class="check-date">${date}</div>
-                </div>
-                <div class="check-result">
-                    <div class="risk-badge ${riskClass}">${check.risk_level || 'UNKNOWN'}</div>
-                    <div style="font-size: 12px; color: var(--tg-theme-hint-color); margin-top: 4px;">${scorePercent}% Risk</div>
-                </div>
-            </div>
-        `;
-    }).join('');
+        const item = document.createElement('div');
+        item.className = 'check-item';
+        item.setAttribute('role', 'button');
+        item.setAttribute('tabindex', '0');
+        item.setAttribute('aria-label', `${typeLabel} from ${date}. Risk level: ${riskLevel}, ${scorePercent}% Risk.`);
 
-    if (currentPage === 1) {
-        container.innerHTML = html;
-    } else {
-        container.insertAdjacentHTML('beforeend', html);
-    }
+        item.onclick = () => viewCheckDetails(check.id);
+        item.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                viewCheckDetails(check.id);
+            }
+        };
+
+        const iconDiv = document.createElement('div');
+        iconDiv.className = `check-icon ${check.check_type}`;
+        iconDiv.setAttribute('aria-hidden', 'true');
+        iconDiv.textContent = icon;
+
+        const detailsDiv = document.createElement('div');
+        detailsDiv.className = 'check-details';
+        detailsDiv.setAttribute('aria-hidden', 'true');
+
+        const typeDiv = document.createElement('div');
+        typeDiv.className = 'check-type';
+        typeDiv.textContent = typeLabel;
+
+        const dateDiv = document.createElement('div');
+        dateDiv.className = 'check-date';
+        dateDiv.textContent = date;
+
+        detailsDiv.appendChild(typeDiv);
+        detailsDiv.appendChild(dateDiv);
+
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'check-result';
+        resultDiv.setAttribute('aria-hidden', 'true');
+
+        const badgeDiv = document.createElement('div');
+        badgeDiv.className = `risk-badge ${riskClass}`;
+        badgeDiv.textContent = riskLevel;
+
+        const scoreDiv = document.createElement('div');
+        scoreDiv.setAttribute('style', 'font-size: 12px; color: var(--tg-theme-hint-color); margin-top: 4px;');
+        scoreDiv.textContent = `${scorePercent}% Risk`;
+
+        resultDiv.appendChild(badgeDiv);
+        resultDiv.appendChild(scoreDiv);
+
+        item.appendChild(iconDiv);
+        item.appendChild(detailsDiv);
+        item.appendChild(resultDiv);
+
+        container.appendChild(item);
+    });
 }
 
 function viewCheckDetails(checkId) {
@@ -338,7 +413,7 @@ async function loadMoreChecks() {
     if (btn) {
         btn.disabled = true;
         btn.setAttribute('aria-busy', 'true');
-        btn.innerHTML = '⏳ Loading...';
+        btn.innerHTML = '<span aria-hidden="true">⏳</span> Loading...';
     }
 
     try {
@@ -402,7 +477,25 @@ function showError(message) {
     document.getElementById('loading').classList.add('hidden');
     const errorEl = document.getElementById('error');
     if (errorEl) {
-        errorEl.textContent = message;
+        errorEl.textContent = '';
+
+        const iconSpan = document.createElement('span');
+        iconSpan.setAttribute('aria-hidden', 'true');
+        iconSpan.textContent = '⚠️ ';
+        errorEl.appendChild(iconSpan);
+
+        const messageNode = document.createTextNode(message);
+        errorEl.appendChild(messageNode);
+
+        errorEl.appendChild(document.createElement('br'));
+        errorEl.appendChild(document.createElement('br'));
+
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'button button-secondary';
+        retryBtn.innerHTML = '<span aria-hidden="true">🔄</span> Try Again';
+        retryBtn.onclick = () => window.location.reload();
+
+        errorEl.appendChild(retryBtn);
         errorEl.classList.remove('hidden');
     }
 }
