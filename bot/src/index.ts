@@ -138,11 +138,12 @@ bot.use(async (ctx, next) => {
   // Fetch role and ban/throttle status in one go to prevent N+1 queries
   const { data } = await supabase
     .from('users')
-    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until')
+    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until, consent_given')
     .eq('telegram_user_id', user.id.toString())
     .maybeSingle();
 
   (ctx as any).state.role = data?.role || 'user';
+  (ctx as any).state.consent_given = data?.consent_given || false;
   (ctx as any).state.userRecord = data || null;
 
   // Bypass for admins/owners
@@ -1388,13 +1389,7 @@ bot.on('message:photo', async (ctx) => {
   const isUserAdmin = await isAdmin(user.id.toString(), (ctx as any).state?.role);
   
   if (!isUserAdmin) {
-    const { data: userData } = await supabase
-      .from('users')
-      .select('consent_given')
-      .eq('telegram_user_id', user.id.toString())
-      .single();
-
-    if (!userData?.consent_given) {
+    if (!(ctx as any).state?.consent_given) {
       await ctx.reply(`⚠️ *Consent Required*
 
 I need your consent to process images. This helps us comply with privacy regulations.
@@ -1432,13 +1427,7 @@ bot.on('message:document', async (ctx) => {
   const isUserAdmin = await isAdmin(user.id.toString(), (ctx as any).state?.role);
 
   if (!isUserAdmin) {
-    const { data: userData } = await supabase
-      .from('users')
-      .select('consent_given')
-      .eq('telegram_user_id', user.id.toString())
-      .single();
-
-    if (!userData?.consent_given) {
+    if (!(ctx as any).state?.consent_given) {
       await ctx.reply(`⚠️ *Consent Required*
 
 I need your consent to process images. This helps us comply with privacy regulations.
