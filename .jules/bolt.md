@@ -35,3 +35,7 @@
 ## 2025-02-12 - Concurrent Supabase Queries
 **Learning:** Found multiple independent Supabase queries (`users` and `target`) being executed sequentially using `await supabase...` in a command handler (`/impersonate`).
 **Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
+## 2025-02-12 - Reusing Global Middleware Fetched Data to Prevent Redundant N+1 Queries
+
+**Learning:** Database lookups made individually inside event handlers (e.g., querying `consent_given` in `bot.on('message:photo')` and `bot.on('message:document')`) caused redundant latency and DB load, especially when the target user record was already being partially fetched upstream in the global middleware.
+**Action:** When a global middleware fetches a user record and attaches it to context (e.g., `(ctx as any).state.userRecord`), add the additional required fields (like `consent_given`) to the global `select()` clause. Then, replace individual downstream handler queries with property lookups from the cached context (e.g., `(ctx as any).state.userRecord?.consent_given`) to eliminate the redundant N+1 query.
