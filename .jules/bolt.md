@@ -35,3 +35,7 @@
 ## 2025-02-12 - Concurrent Supabase Queries
 **Learning:** Found multiple independent Supabase queries (`users` and `target`) being executed sequentially using `await supabase...` in a command handler (`/impersonate`).
 **Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
+
+## 2025-02-12 - Reusing Fetched Objects in Impersonation Checks
+**Learning:** Handlers that check credits conditionally for impersonation forgot to pass the already fetched `dbUser` object, resulting in an avoidable DB hit.
+**Action:** Ensure all invocations of `checkCredits` utilize the `cachedUser` argument when the user record has already been loaded in the handler's scope.
