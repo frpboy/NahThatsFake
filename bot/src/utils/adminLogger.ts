@@ -22,27 +22,48 @@ export async function logAdminAction(
 
     // Resolve target IDs if provided as Telegram IDs
     let targetUserUuid = null;
+    let targetGroupUuid = null;
+
+    const promises = [];
+    let userPromiseIndex = -1;
+    let groupPromiseIndex = -1;
+
     if (targetUserId) {
-      const { data: user } = await supabase
-        .from('users')
-        .select('id')
-        .eq('telegram_user_id', targetUserId)
-        .maybeSingle();
-      targetUserUuid = user?.id;
+      promises.push(
+        supabase
+          .from('users')
+          .select('id')
+          .eq('telegram_user_id', targetUserId)
+          .maybeSingle()
+      );
+      userPromiseIndex = promises.length - 1;
     }
 
-    let targetGroupUuid = null;
     if (targetGroupId) {
       const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (uuidLike.test(targetGroupId)) {
         targetGroupUuid = targetGroupId;
       } else {
-        const { data: group } = await supabase
-          .from('groups')
-          .select('id')
-          .eq('telegram_group_id', targetGroupId)
-          .maybeSingle();
-        targetGroupUuid = group?.id;
+        promises.push(
+          supabase
+            .from('groups')
+            .select('id')
+            .eq('telegram_group_id', targetGroupId)
+            .maybeSingle()
+        );
+        groupPromiseIndex = promises.length - 1;
+      }
+    }
+
+    if (promises.length > 0) {
+      const results = await Promise.all(promises);
+
+      if (userPromiseIndex !== -1) {
+        targetUserUuid = results[userPromiseIndex].data?.id || null;
+      }
+
+      if (groupPromiseIndex !== -1) {
+        targetGroupUuid = results[groupPromiseIndex].data?.id || null;
       }
     }
 
