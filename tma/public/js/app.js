@@ -403,7 +403,11 @@ function renderChecks() {
 function viewCheckDetails(checkId) {
     hapticFeedback('light');
     // Future: Show detailed modal or navigate to detail view
-    console.log('View details for', checkId);
+    if (tg && tg.showAlert) {
+        tg.showAlert('Check details view coming soon!');
+    } else {
+        console.log('View details for', checkId);
+    }
 }
 
 // Load more checks
