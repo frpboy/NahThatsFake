@@ -320,19 +320,47 @@ function renderChecks() {
     const container = document.getElementById('recent-checks');
     
     if (checks.length === 0) {
-        container.innerHTML = `
-            <div class="loading" role="status">
-                <div aria-hidden="true" style="font-size: 2rem; margin-bottom: 8px;">🕵️</div>
-                <p style="margin-bottom: 12px; color: var(--tg-theme-text-color);">No checks yet</p>
-                <p style="font-size: 13px; margin-bottom: 16px;">Forward a message or link to the bot to get started!</p>
-                <button class="button button-secondary" onclick="openBot()" style="max-width: 200px; margin: 0 auto; padding: 10px 16px; font-size: 14px;"><span aria-hidden="true">🤖</span> Open Bot Chat</button>
-            </div>
-        `;
+        container.textContent = '';
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'loading';
+        emptyDiv.setAttribute('role', 'status');
+
+        const iconDiv = document.createElement('div');
+        iconDiv.setAttribute('aria-hidden', 'true');
+        iconDiv.setAttribute('style', 'font-size: 2rem; margin-bottom: 8px;');
+        iconDiv.textContent = '🕵️';
+
+        const p1 = document.createElement('p');
+        p1.setAttribute('style', 'margin-bottom: 12px; color: var(--tg-theme-text-color);');
+        p1.textContent = 'No checks yet';
+
+        const p2 = document.createElement('p');
+        p2.setAttribute('style', 'font-size: 13px; margin-bottom: 16px;');
+        p2.textContent = 'Forward a message or link to the bot to get started!';
+
+        const btn = document.createElement('button');
+        btn.className = 'button button-secondary';
+        btn.onclick = openBot;
+        btn.setAttribute('style', 'max-width: 200px; margin: 0 auto; padding: 10px 16px; font-size: 14px;');
+
+        const btnIcon = document.createElement('span');
+        btnIcon.setAttribute('aria-hidden', 'true');
+        btnIcon.textContent = '🤖';
+
+        btn.appendChild(btnIcon);
+        btn.appendChild(document.createTextNode(' Open Bot Chat'));
+
+        emptyDiv.appendChild(iconDiv);
+        emptyDiv.appendChild(p1);
+        emptyDiv.appendChild(p2);
+        emptyDiv.appendChild(btn);
+
+        container.appendChild(emptyDiv);
         return;
     }
 
     if (currentPage === 1) {
-        container.innerHTML = '';
+        container.textContent = '';
     }
 
     checks.forEach(check => {
@@ -413,7 +441,12 @@ async function loadMoreChecks() {
     if (btn) {
         btn.disabled = true;
         btn.setAttribute('aria-busy', 'true');
-        btn.innerHTML = '<span aria-hidden="true">⏳</span> Loading...';
+        btn.textContent = '';
+        const spinnerSpan = document.createElement('span');
+        spinnerSpan.setAttribute('aria-hidden', 'true');
+        spinnerSpan.textContent = '⏳';
+        btn.appendChild(spinnerSpan);
+        btn.appendChild(document.createTextNode(' Loading...'));
     }
 
     try {
@@ -423,7 +456,7 @@ async function loadMoreChecks() {
         if (btn) {
             btn.disabled = false;
             btn.removeAttribute('aria-busy');
-            btn.innerHTML = 'Load More';
+            btn.textContent = 'Load More';
         }
     }
 }
@@ -492,7 +525,12 @@ function showError(message) {
 
         const retryBtn = document.createElement('button');
         retryBtn.className = 'button button-secondary';
-        retryBtn.innerHTML = '<span aria-hidden="true">🔄</span> Try Again';
+        retryBtn.textContent = '';
+        const retrySpan = document.createElement('span');
+        retrySpan.setAttribute('aria-hidden', 'true');
+        retrySpan.textContent = '🔄';
+        retryBtn.appendChild(retrySpan);
+        retryBtn.appendChild(document.createTextNode(' Try Again'));
         retryBtn.onclick = () => window.location.reload();
 
         errorEl.appendChild(retryBtn);
