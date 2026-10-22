@@ -137,23 +137,46 @@ h3 {
 .check-item {
     display: flex;
     align-items: center;
-    padding: 12px 0;
+    padding: 12px 8px;
+    margin: 0 -8px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
     cursor: pointer;
+    border-radius: 8px;
+    transition: background-color 0.2s ease, transform 0.1s ease;
 }
 
 .check-item:focus-visible {
     outline: 2px solid var(--tg-theme-button-color);
     outline-offset: 2px;
-    border-radius: 8px;
 }
 
 .check-item:last-child {
     border-bottom: none;
 }
 
+@media (hover: hover) {
+    .check-item:hover {
+        background-color: rgba(0, 0, 0, 0.04);
+    }
+}
+
+.check-item:active {
+    transform: scale(0.98);
+    background-color: rgba(0, 0, 0, 0.06);
+}
+
 .dark .check-item {
     border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+@media (hover: hover) {
+    .dark .check-item:hover {
+        background-color: rgba(255, 255, 255, 0.04);
+    }
+}
+
+.dark .check-item:active {
+    background-color: rgba(255, 255, 255, 0.06);
 }
 
 .check-icon {
