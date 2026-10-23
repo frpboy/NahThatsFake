@@ -49,3 +49,7 @@
 **Vulnerability:** Found multiple instances of Cross-Site Scripting (XSS) vulnerabilities where user-controlled input (check details) is injected directly into the DOM using `innerHTML` without any sanitization.
 **Learning:** `innerHTML` executes inline scripts and renders raw HTML, which can be easily exploited by malicious users injecting HTML tags or script blocks in their input fields (e.g. check details, types).
 **Prevention:** Avoid `innerHTML` for untrusted content. Use `textContent`, `innerText` or robust DOM manipulation methods (e.g., `document.createElement`) to build UI components safely.
+## 2024-10-20 - XSS in UI rendering
+**Vulnerability:** User-controlled input (check details) was injected directly into the DOM using `innerHTML` without sanitization.
+**Learning:** Even static HTML strings assigned to `innerHTML` are flagged by linters and reviewers as security risks, as `innerHTML` is inherently unsafe and a potential vector for Cross-Site Scripting (XSS) if user input is accidentally interpolated later.
+**Prevention:** Avoid `innerHTML` entirely. Use `textContent`, `innerText` or safe DOM manipulation methods like `document.createElement` and `appendChild` to build UI components safely and securely, preventing future developers from accidentally introducing XSS vulnerabilities.
