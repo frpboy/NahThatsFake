@@ -1,4 +1,21 @@
 
+<!-- PolicyChecks badges: repository policy status -->
+<p align="center">
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/secret-push-protection-enabled/details.json"><img alt="Secret push protection" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/secret-push-protection-enabled.svg"></a>
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/web-commit-signoff-required/details.json"><img alt="Web signoff" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/web-commit-signoff-required.svg"></a>
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/sha-pinning-required/details.json"><img alt="SHA pinning" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/sha-pinning-required.svg"></a>
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-pull-request-required/details.json"><img alt="Pull request required" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-pull-request-required.svg"></a>
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-force-pushes-blocked/details.json"><img alt="Force pushes blocked" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-force-pushes-blocked.svg"></a>
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-status-checks-required/details.json"><img alt="Status checks" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-status-checks-required.svg"></a>
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/immutable-releases/details.json"><img alt="Immutable releases" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/immutable-releases.svg"></a>
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-linear-history-required/details.json"><img alt="Linear history" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-linear-history-required.svg"></a>
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/community-health/details.json"><img alt="Community health" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/community-health.svg"></a>
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-deletion-blocked/details.json"><img alt="Deletion blocked" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-deletion-blocked.svg"></a>
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/secret-scanning-enabled/details.json"><img alt="Secret scanning" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/secret-scanning-enabled.svg"></a>
+  <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-signed-commits-required/details.json"><img alt="Signed commits" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/default-branch-signed-commits-required.svg"></a>
+</p>
+<!-- End PolicyChecks badges -->
+
 # Nah That's Fake - Telegram Bot & TMA
 
 A comprehensive deepfake and scam detection system built for Telegram, featuring both a bot and a Telegram Mini App (TMA).
