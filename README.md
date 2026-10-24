@@ -20,6 +20,11 @@
 
 A comprehensive deepfake and scam detection system built for Telegram, featuring both a bot and a Telegram Mini App (TMA).
 
+## Links
+
+- **Live demo:** https://nahthatsfake.vercel.app/
+- **Source code:** https://github.com/frpboy/NahThatsFake
+
 ## 🚀 Features
 
 - **Deepfake Detection**: AI-powered image analysis to detect AI-generated content
