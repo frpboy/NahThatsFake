@@ -35,3 +35,6 @@
 ## 2025-02-12 - Concurrent Supabase Queries
 **Learning:** Found multiple independent Supabase queries (`users` and `target`) being executed sequentially using `await supabase...` in a command handler (`/impersonate`).
 **Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
+## 2025-02-12 - Combine Consent Given Query into Global State
+**Learning:** When handlers start by fetching a specific field (like `consent_given`) from the database on every photo/document uploaded, it creates unnecessary N+1 query bottlenecks if the user's data is already being fetched in a global middleware.
+**Action:** Combine the `consent_given` field into the existing global middleware database query that fetches user state, and access it via `(ctx as any).state.userRecord?.consent_given` in subsequent handlers.
