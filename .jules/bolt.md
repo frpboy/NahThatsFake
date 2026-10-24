@@ -35,3 +35,7 @@
 ## 2025-02-12 - Concurrent Supabase Queries
 **Learning:** Found multiple independent Supabase queries (`users` and `target`) being executed sequentially using `await supabase...` in a command handler (`/impersonate`).
 **Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
+
+## 2025-02-12 - Concurrent Supabase Mutations
+**Learning:** Found multiple independent Supabase mutations (like updating 'users' table multiple times with different conditions) being executed sequentially using `await supabase...` sequentially in scheduler jobs (`startScheduler`).
+**Action:** When multiple independent database mutations are needed and don't depend on each other, always combine them using `Promise.all` to reduce network round-trips and reduce the overall database wait time.
