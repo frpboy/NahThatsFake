@@ -114,12 +114,8 @@ async function endImpersonation(ownerTelegramUserId: string, reason: string) {
   }
 }
 
-// Debug Middleware - Log all updates
-bot.use(async (ctx, next) => {
-  if (ctx.message?.text) {
-    console.log(`[DEBUG] Text received from ${ctx.from?.id}: "${ctx.message.text}"`);
-    console.log(`[DEBUG] Is command? ${ctx.message.text.startsWith('/')}`);
-  }
+// Do not log raw user-submitted messages: they may contain private URLs or other sensitive data.
+bot.use(async (_ctx, next) => {
   await next();
 });
 
