@@ -21,7 +21,7 @@
   "author": "Nah That's Fake Team",
   "license": "MIT",
   "dependencies": {
-    "@supabase/supabase-js": "^2.97.0",
+    "@supabase/supabase-js": "^2.118.0",
     "@types/node-cron": "^3.0.11",
     "axios": "^1.13.5",
     "dotenv": "^17.3.1",
