@@ -28,8 +28,8 @@
 - Merge waves: 0. Merge SHAs: none. Default branch unchanged by this workflow.
 
 ## Report PR #403
-- Head: `ab8bd916ee63f283227bcfb58f8e509842e02e0a`; draft, unmerged; Vercel status failed due to deployment rate limit, CodeRabbit skipped the draft, and GitGuardian scanned 16 commits without finding secrets. No formal review is present.
-- The CSV matrix is structurally consistent (15 columns per row, 388 PR rows and 383 branch rows as of its snapshot). The report PR remains unreviewed and should be checked for snapshot accuracy before merge.
+- Draft, unmerged; the last observed report-head checks showed Vercel failure due to deployment rate limit and GitGuardian success (20 commits scanned without finding secrets). The head advanced during report corrections, so re-fetch the live head and checks before review/merge. No formal review is present.
+- The CSV matrix was structurally checked at the time of its snapshot (15 columns per row, 388 PR rows and 383 branch rows). Because the report branch contains the matrix itself, the recorded report-branch SHA can lag the live PR head by the report commit. The report PR remains unreviewed and should be checked for snapshot accuracy before merge.
 
 ## Additional PR #402 review blockers
 - VirusTotal's nested catch still treats all lookup errors (including timeouts, 429 and 5xx) as a reason to submit a new analysis; only a confirmed not-found response should trigger that path.
