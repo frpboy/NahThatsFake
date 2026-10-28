@@ -26,5 +26,9 @@ Visibility: public
 - No local checkout or .git directory was available in the execution container; tests/build/lint/scanners were not run.
 - Baseline Vercel status is failure due to deployment rate limiting for 24 hours; this is not a code-test result.
 
+## Snapshot timing
+
+The inventory was captured before creating the reporting branch and draft PR #403; it intentionally does not include its own branch/PR in the 382-branch/387-PR baseline snapshot.
+
 ## Completeness note
 Inventory reads were paginated. This is not a claim that every historical PR diff, review thread, check run, or every branch commit has been content-reviewed. See PR-AND-BRANCH-MATRIX.csv.
