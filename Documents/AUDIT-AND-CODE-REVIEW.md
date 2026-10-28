@@ -7,7 +7,7 @@ Status: PARTIAL — no security sign-off.
 ## Source-level candidate: issue #399
 At baseline, bot/src/services/urlscanner.ts returned empty threat arrays or zero counts when provider credentials were missing or provider requests failed. Promise.allSettled then allowed a zero score to map to LOW. bot/src/handlers/link.ts could cache that result for seven days. This is source-level evidence of a failure path; independent runtime reproduction was not performed.
 
-Draft remediation: PR #402, branch fix/url-scan-provider-failure-state, head 62a6251dd3459f54a9c0b07323170911bb1cbbf5. It changes missing/failed providers to explicit failures, classifies coverage, prevents inconclusive scans from being presented as LOW, avoids caching partial results, versions the cache key and avoids logging credential-bearing request details. A classifier assertion test was added. Provider adapter behavior remains unvalidated.
+Draft remediation: PR #402, branch fix/url-scan-provider-failure-state, head 378d615c8c0f54ad02ce56ef58a1a75d13bb52be. It changes missing/failed providers to explicit failures, classifies coverage, prevents inconclusive scans from being presented as LOW, avoids caching partial results, versions the cache key and avoids logging credential-bearing request details. A 47-line test now uses dependency-injected provider result doubles and a dedicated test tsconfig. The actual Axios response/error paths, malformed/in-progress provider responses, cache writes and user-facing handler behavior remain unvalidated.
 
 ## Other open candidates
 - #390: payment fulfilment idempotency; SQL/schema and concurrent delivery tests required.
