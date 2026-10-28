@@ -1,7 +1,5 @@
 
 import axios from 'axios';
-import { supabase } from '../supabase';
-
 interface SafeBrowsingThreat {
   threatType: string;
   platformType: string;
@@ -30,8 +28,18 @@ interface VirusTotalResponse {
   };
 }
 
+export type ScanCoverage = 'complete' | 'partial' | 'unavailable' | 'inconclusive';
+
+/** Classify provider coverage without treating missing evidence as a clean result. */
+export function getScanCoverage(successfulProviderCount: number, threatCount: number): ScanCoverage {
+  if (successfulProviderCount <= 0) return 'unavailable';
+  if (successfulProviderCount >= 2) return 'complete';
+  return threatCount > 0 ? 'partial' : 'inconclusive';
+}
+
 export async function checkUrlSafety(url: string): Promise<{
   score: number;
+  scan_status: 'complete' | 'partial';
   risk_level: 'HIGH' | 'MEDIUM' | 'LOW';
   threats: string[];
   sources: string[];
@@ -74,13 +82,21 @@ export async function checkUrlSafety(url: string): Promise<{
     }
   }
 
-  // Calculate final score and risk level
+  // A fulfilled provider result is evidence only if the provider actually ran.
+  const successfulProviderCount = results.filter(result => result.status === 'fulfilled').length;
+  const scanCoverage = getScanCoverage(successfulProviderCount, threats.length);
+  if (scanCoverage === 'unavailable' || scanCoverage === 'inconclusive') {
+    throw new Error('URL safety scan inconclusive: insufficient provider coverage');
+  }
+
+  // A partial scan that detected a threat must not be presented as LOW merely
+  // because only one provider responded.
   const finalScore = Math.min(totalScore, 1.0);
   let riskLevel: 'HIGH' | 'MEDIUM' | 'LOW';
   
   if (finalScore >= 0.7) {
     riskLevel = 'HIGH';
-  } else if (finalScore >= 0.4) {
+  } else if (finalScore >= 0.4 || (scanCoverage === 'partial' && threats.length > 0)) {
     riskLevel = 'MEDIUM';
   } else {
     riskLevel = 'LOW';
@@ -88,6 +104,7 @@ export async function checkUrlSafety(url: string): Promise<{
 
   return {
     score: finalScore,
+    scan_status: scanCoverage,
     risk_level: riskLevel,
     threats: [...new Set(threats)], // Remove duplicates
     sources: [...new Set(sources)],
@@ -102,8 +119,7 @@ async function checkGoogleSafeBrowsing(url: string): Promise<{
   const apiKey = process.env.GOOGLE_SAFE_BROWSING_KEY;
   
   if (!apiKey) {
-    console.warn('Google Safe Browsing API key not configured');
-    return { threats: [], safe: true };
+    throw new Error('Google Safe Browsing provider is not configured');
   }
 
   try {
@@ -143,12 +159,9 @@ async function checkGoogleSafeBrowsing(url: string): Promise<{
     };
 
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error('Google Safe Browsing API error:', error.response?.data || error.message);
-    }
-    
-    // Fail safe - assume URL is safe if API fails
-    return { threats: [], safe: true };
+    // Do not log the Axios error object: request URLs can contain API credentials.
+    console.error('Google Safe Browsing API unavailable', axios.isAxiosError(error) ? (error.response?.status ?? error.code ?? 'request-failed') : 'unknown-error');
+    throw new Error('Google Safe Browsing provider request failed');
   }
 }
 
@@ -161,8 +174,7 @@ async function checkVirusTotal(url: string): Promise<{
   const apiKey = process.env.VIRUSTOTAL_API_KEY;
   
   if (!apiKey) {
-    console.warn('VirusTotal API key not configured');
-    return { malicious: 0, suspicious: 0, harmless: 0, undetected: 0 };
+    throw new Error('VirusTotal provider is not configured');
   }
 
   try {
@@ -234,11 +246,8 @@ async function checkVirusTotal(url: string): Promise<{
     }
 
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error('VirusTotal API error:', error.response?.data || error.message);
-    }
-    
-    // Return neutral results if API fails
-    return { malicious: 0, suspicious: 0, harmless: 0, undetected: 0 };
+    // Avoid logging request details, response bodies, or credential-bearing URLs.
+    console.error('VirusTotal provider unavailable', axios.isAxiosError(error) ? (error.response?.status ?? error.code ?? 'request-failed') : 'unknown-error');
+    throw new Error('VirusTotal provider request failed');
   }
 }
