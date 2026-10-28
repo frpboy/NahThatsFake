@@ -21,7 +21,7 @@ Draft remediation: PR #402, branch fix/url-scan-provider-failure-state, head 62a
 | Area | Status | Limitation |
 |---|---|---|
 | Repository identity and baseline | Reviewed | GitHub metadata and recursive tree |
-| Issues/PRs/branches | Inventory retrieved | 15 issues, 387 PRs, 382 branches; not every diff/review/check reviewed |
+| Issues/PRs/branches | Inventory retrieved | 15 issues, 387 PRs, 383 branches; not every diff/review/check reviewed |
 | URL scanner failure handling | Source reviewed; draft fix | No local test run or provider integration tests |
 | Payment idempotency | Needs validation | #390; disposable DB/concurrency tests unavailable |
 | URL SSRF | Needs validation | #391; isolated harness not run |
@@ -36,6 +36,14 @@ Draft remediation: PR #402, branch fix/url-scan-provider-failure-state, head 62a
 - Compare of PR #402 against baseline: 4 commits ahead, 0 behind; 4 changed files.
 - Tests/build/lint/dependency scans/secret scan: not run; no local checkout available.
 - PR #402 observed Vercel status: failure due to deployment rate limit, not a test result.
+
+## Additional review of draft PR #402 (static review only)
+- Current head: `62a6251dd3459f54a9c0b07323170911bb1cbbf5`; Vercel status is a deployment-rate-limit failure, CodeRabbit was skipped for the draft, and GitGuardian's secret scan succeeded for four commits. No code tests were run.
+- The nested catch around VirusTotal's existing-report GET still submits the URL after any error, not only a confirmed 404/not-found. Timeout, 429, 5xx and network failures therefore take the submission path instead of being treated as unavailable.
+- Google Safe Browsing defaults a missing `matches` property to an empty list; VirusTotal defaults missing stats to zero and does not check whether an analysis is complete. Malformed or in-progress 2xx responses need to be classified as inconclusive.
+- `bot/tests/urlscanner.test.ts` only asserts the pure coverage classifier. It does not test provider adapters, missing credentials, timeout/exception behavior, partial failures, cache writes, cache-key versioning, or user-facing messages.
+- A formal independent review could not be submitted through this connection because the connected GitHub identity is the PR author. A detailed audit comment was posted to PR #402; independent review remains blocked.
+- Existing open PR #346 also needs careful review: current `tma/server.js` invokes `get_total_revenue` through the anon-key client, while PR #346 changes the call to a service-role client and restricts function execution. PR #346 is dirty and includes unrelated documentation changes; validate its actual DB privilege behavior on a disposable database and keep the fix focused.
 
 ## Conclusion
 No candidate was independently verified end-to-end in this run. The URL scanner has a concrete source-level failure path, but runtime impact and fix require isolated tests and independent review.
