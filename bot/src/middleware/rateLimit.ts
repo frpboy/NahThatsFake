@@ -17,7 +17,7 @@ function cleanupRateLimits(now: number) {
   }
 
   // Bound memory if a burst of unique user IDs arrives.
-  while (rateLimits.size > MAX_TRACKED_USERS) {
+  while (rateLimits.size >= MAX_TRACKED_USERS) {
     const oldestUserId = rateLimits.keys().next().value;
     if (oldestUserId === undefined) break;
     rateLimits.delete(oldestUserId);
