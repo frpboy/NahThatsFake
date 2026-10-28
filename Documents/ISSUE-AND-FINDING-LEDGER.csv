@@ -1,0 +1,16 @@
+issue_number,title,github_state,audit_disposition,labels,url,next_action
+401,CI reliability: add repeatable checks and replace placeholder root test command,open,Partial,,https://github.com/frpboy/NahThatsFake/issues/401,No workflow directory; root test command is placeholder
+400,"Repository governance: protect the default branch and require reviewed, validated changes",open,Blocked,,https://github.com/frpboy/NahThatsFake/issues/400,Branch protection detail endpoint returned 403
+399,Security validation: distinguish unavailable URL scans from LOW-risk verdicts,open,Needs validation,security,https://github.com/frpboy/NahThatsFake/issues/399,Draft PR #402; integration tests and independent review pending
+398,[Security Audit] Umbrella tracker — complete all six audit phases,open,Partial,security,https://github.com/frpboy/NahThatsFake/issues/398,Umbrella tracker; no security sign-off
+397,[Security Audit] Phase 6 — Publish final security report after verification,open,Blocked,security,https://github.com/frpboy/NahThatsFake/issues/397,Final report depends on verification and coverage reconciliation
+396,[Security Audit] Phase 5 — Reconcile coverage ledger and audit gaps,open,Partial,security,https://github.com/frpboy/NahThatsFake/issues/396,Reconcile component-level coverage against evidence
+395,[Security Audit] Phase 4 — Unblock and complete independent verification,open,Blocked,security,https://github.com/frpboy/NahThatsFake/issues/395,Independent reviewer and isolated test environment required
+394,[Security Audit] Phase 3 — Complete vulnerability hunting and validate candidates,open,Partial,security,https://github.com/frpboy/NahThatsFake/issues/394,Run ecosystem scans and reproduce/triage candidates
+393,[Security Audit] Phase 2 — Finish reconnaissance and architecture mapping,open,Partial,security,https://github.com/frpboy/NahThatsFake/issues/393,Complete architecture/data-flow map
+392,"[Security Audit] Phase 1 — Complete setup, scope, and audit planning",open,Partial,security,https://github.com/frpboy/NahThatsFake/issues/392,"Pin scope, baseline, threat model and authorized test boundaries"
+391,"Security: audit URL scanner for SSRF, DNS rebinding, redirects, and resource limits",open,Needs validation,security,https://github.com/frpboy/NahThatsFake/issues/391,"Trace URL fetch, redirects, DNS and private-address restrictions in isolated harness"
+390,Security: prove payment fulfilment is idempotent across callbacks and webhooks,open,Needs validation,security,https://github.com/frpboy/NahThatsFake/issues/390,Find exact SQL and test duplicate/concurrent fulfilment in disposable DB
+388,Security: restrict public read/update access to feedback records,closed,Closed,security,https://github.com/frpboy/NahThatsFake/issues/388,PR #389 merged; effective database grants remain to be verified
+386,"Security: harden Telegram Mini App validation, abuse-flag RLS, and bot logging/rate limiting",closed,Closed,security,https://github.com/frpboy/NahThatsFake/issues/386,PR #387 merged; runtime/tests remain to be verified
+373,"chore/security: standardize lockfiles across root, bot, and TMA",open,Needs validation,dependencies,https://github.com/frpboy/NahThatsFake/issues/373,Resolve package-manager/lockfile strategy
