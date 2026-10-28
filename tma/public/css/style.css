@@ -137,9 +137,24 @@ h3 {
 .check-item {
     display: flex;
     align-items: center;
-    padding: 12px 0;
+    padding: 12px 8px;
+    margin: 0 -8px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
     cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease, border-radius 0.2s ease;
+}
+
+@media (hover: hover) {
+    .check-item:hover {
+        background-color: rgba(0, 0, 0, 0.04);
+        border-radius: 8px;
+    }
+}
+
+.check-item:active {
+    transform: scale(0.98);
+    background-color: rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
 }
 
 .check-item:focus-visible {
