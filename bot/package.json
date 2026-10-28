@@ -9,8 +9,8 @@
     "dev": "ts-node src/index.ts",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test:markdown": "ts-node tests/markdown.test.ts",
-    "test:urlscanner": "ts-node tests/urlscanner.test.ts"
+    "test:markdown": "ts-node --project tsconfig.test.json tests/markdown.test.ts",
+    "test:urlscanner": "ts-node --project tsconfig.test.json tests/urlscanner.test.ts"
   },
   "keywords": [
     "telegram",
