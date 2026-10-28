@@ -7,7 +7,7 @@
 - Default branch: main
 - Baseline SHA: 682aa8cfb72a15ee69dc796eba00e911d760b418
 - Issues inventoried: 15 total (13 open, 2 closed).
-- PRs inventoried: 387 total (28 open; 61 historically merged).
+- PRs inventoried: 388 total (29 open, 359 closed; 61 historically merged).
 - Branches inventoried: 383.
 - Independently verified vulnerabilities from this run: 0. A source-level URL scan failure path remains a candidate tracked in #399.
 
@@ -26,6 +26,10 @@
 - Branch protection: branch metadata says protected=false and rulesets endpoint was empty; direct protection detail endpoint returned 403, so effective policy remains incompletely verified.
 - Database/RLS, payment concurrency, SSRF, SBOM and history secret scan: not validated.
 - Merge waves: 0. Merge SHAs: none. Default branch unchanged by this workflow.
+
+## Report PR #403
+- Head: `ab8bd916ee63f283227bcfb58f8e509842e02e0a`; draft, unmerged; Vercel status failed due to deployment rate limit, CodeRabbit skipped the draft, and GitGuardian scanned 16 commits without finding secrets. No formal review is present.
+- The CSV matrix is structurally consistent (15 columns per row, 388 PR rows and 383 branch rows as of its snapshot). The report PR remains unreviewed and should be checked for snapshot accuracy before merge.
 
 ## Additional PR #402 review blockers
 - VirusTotal's nested catch still treats all lookup errors (including timeouts, 429 and 5xx) as a reason to submit a new analysis; only a confirmed not-found response should trigger that path.
