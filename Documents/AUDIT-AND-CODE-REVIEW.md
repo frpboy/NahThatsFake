@@ -21,7 +21,7 @@ Draft remediation: PR #402, branch fix/url-scan-provider-failure-state, head 62a
 | Area | Status | Limitation |
 |---|---|---|
 | Repository identity and baseline | Reviewed | GitHub metadata and recursive tree |
-| Issues/PRs/branches | Inventory retrieved | 15 issues, 387 PRs, 383 branches; not every diff/review/check reviewed |
+| Issues/PRs/branches | Inventory retrieved | 15 issues, 388 PRs, 383 branches; not every diff/review/check reviewed |
 | URL scanner failure handling | Source reviewed; draft fix | No local test run or provider integration tests |
 | Payment idempotency | Needs validation | #390; disposable DB/concurrency tests unavailable |
 | URL SSRF | Needs validation | #391; isolated harness not run |
@@ -44,6 +44,9 @@ Draft remediation: PR #402, branch fix/url-scan-provider-failure-state, head 62a
 - `bot/tests/urlscanner.test.ts` only asserts the pure coverage classifier. It does not test provider adapters, missing credentials, timeout/exception behavior, partial failures, cache writes, cache-key versioning, or user-facing messages.
 - A formal independent review could not be submitted through this connection because the connected GitHub identity is the PR author. A detailed audit comment was posted to PR #402; independent review remains blocked.
 - Existing open PR #346 also needs careful review: current `tma/server.js` invokes `get_total_revenue` through the anon-key client, while PR #346 changes the call to a service-role client and restricts function execution. PR #346 is dirty and includes unrelated documentation changes; validate its actual DB privilege behavior on a disposable database and keep the fix focused.
+
+## Tracking report PR
+- Draft PR #403 contains the seven requested tracking artifacts and remains unmerged. The matrix is a point-in-time snapshot and the report branch's live SHA can advance as that matrix is updated; re-fetch the PR head/checks before any merge decision.
 
 ## Conclusion
 No candidate was independently verified end-to-end in this run. The URL scanner has a concrete source-level failure path, but runtime impact and fix require isolated tests and independent review.
