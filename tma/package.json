@@ -18,7 +18,7 @@
   "author": "Nah That's Fake Team",
   "license": "MIT",
   "dependencies": {
-    "@supabase/supabase-js": "^2.38.4",
+    "@supabase/supabase-js": "^2.118.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
