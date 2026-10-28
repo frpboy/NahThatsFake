@@ -17,7 +17,8 @@
 - Updated URL scanner provider-failure handling and cache behavior; added classifier assertions and a test command.
 - Opened draft PR #402: https://github.com/frpboy/NahThatsFake/pull/402, linked to issue #399.
 - Posted status updates to #399 and #398.
-- Prepared seven tracking artifacts under Documents/ on a separate reporting branch; none are merged.
+- Prepared seven tracking artifacts under Documents/ on a separate reporting branch and opened draft PR #403: https://github.com/frpboy/NahThatsFake/pull/403; neither the report PR nor the fix PR is merged.
+- Inventory counts are a baseline snapshot taken before creating report branch/PR #403, so they exclude this report branch/PR.
 
 ## Validation
 - Local tests/build/lint/security scans: NOT RUN; no local checkout or .git directory was available in the execution container.
