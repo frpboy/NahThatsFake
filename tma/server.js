@@ -92,8 +92,16 @@ const validateTelegramData = (req, res, next) => {
     return res.status(401).json({ error: 'Missing auth_date in init data' });
   }
 
-  const authDate = parseInt(authDateStr, 10);
+  // Reject malformed, expired, and materially future-dated init data.
+  // Allow up to 60 seconds of clock skew for small server/client time differences.
+  if (!/^\d+$/.test(authDateStr)) {
+    return res.status(401).json({ error: 'Invalid auth_date in init data' });
+  }
+  const authDate = Number(authDateStr);
   const now = Math.floor(Date.now() / 1000);
+  if (!Number.isSafeInteger(authDate) || authDate <= 0 || authDate > now + 60) {
+    return res.status(401).json({ error: 'Invalid auth_date in init data' });
+  }
   // 24 hours in seconds
   if (now - authDate > 86400) {
     return res.status(401).json({ error: 'Telegram init data expired' });
@@ -132,10 +140,20 @@ const validateTelegramData = (req, res, next) => {
     // Valid data
     // Parse user data to attach to req
     const userStr = urlParams.get('user');
-    if (userStr) {
-      req.telegramUser = JSON.parse(userStr);
+    if (!userStr) {
+      return res.status(401).json({ error: 'Missing user in init data' });
     }
-    next();
+    try {
+      const parsedUser = JSON.parse(userStr);
+      if (!parsedUser || typeof parsedUser !== 'object' ||
+          !Number.isSafeInteger(parsedUser.id) || parsedUser.id <= 0) {
+        return res.status(401).json({ error: 'Invalid user in init data' });
+      }
+      req.telegramUser = parsedUser;
+    } catch {
+      return res.status(401).json({ error: 'Invalid user in init data' });
+    }
+    return next();
   } else {
     return res.status(403).json({ error: 'Invalid Telegram data hash' });
   }

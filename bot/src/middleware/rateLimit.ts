@@ -5,6 +5,24 @@ import { config } from '../config';
 
 const rateLimits = new Map<string, { count: number; windowStart: number }>();
 const WINDOW_MS = 60000; // 1 minute
+const MAX_TRACKED_USERS = 100000;
+const CLEANUP_EVERY_REQUESTS = 100;
+let requestsSinceCleanup = 0;
+
+function cleanupRateLimits(now: number) {
+  // Periodic cleanup avoids scanning the map on every update.
+  requestsSinceCleanup = 0;
+  for (const [userId, limit] of rateLimits) {
+    if (now - limit.windowStart > WINDOW_MS) rateLimits.delete(userId);
+  }
+
+  // Bound memory if a burst of unique user IDs arrives.
+  while (rateLimits.size >= MAX_TRACKED_USERS) {
+    const oldestUserId = rateLimits.keys().next().value;
+    if (oldestUserId === undefined) break;
+    rateLimits.delete(oldestUserId);
+  }
+}
 const MAX_REQUESTS = 10;
 const ABUSE_TRIGGER_THRESHOLD = 20; // 2x limit -> flag
 
@@ -20,6 +38,10 @@ export async function rateLimitMiddleware(ctx: Context, next: NextFunction) {
   }
 
   const now = Date.now();
+  requestsSinceCleanup++;
+  if (requestsSinceCleanup >= CLEANUP_EVERY_REQUESTS || rateLimits.size >= MAX_TRACKED_USERS) {
+    cleanupRateLimits(now);
+  }
   const userLimit = rateLimits.get(telegramUserId) || { count: 0, windowStart: now };
 
   if (now - userLimit.windowStart > WINDOW_MS) {
