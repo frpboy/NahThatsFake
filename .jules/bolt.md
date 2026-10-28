@@ -35,3 +35,6 @@
 ## 2025-02-12 - Concurrent Supabase Queries
 **Learning:** Found multiple independent Supabase queries (`users` and `target`) being executed sequentially using `await supabase...` in a command handler (`/impersonate`).
 **Action:** When multiple independent database queries are needed, always combine them using `Promise.all` to reduce network round-trips and halve the database wait time.
+## 2024-08-01 - Redundant Fetching of Context Information
+**Learning:** Found multiple places in `bot/src/index.ts` where we fetch user details that we already have in the global state initialized by the middleware (`(ctx as any).state.userRecord`).
+**Action:** When details are already present on the context state, use `(ctx as any).state.userRecord` directly rather than executing another redundant database round-trip query.

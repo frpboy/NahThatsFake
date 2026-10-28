@@ -247,11 +247,7 @@ bot.command('start', async (ctx) => {
   }
 
   // Register/update user
-  const { data: existingUser } = await supabase
-    .from('users')
-    .select('*')
-    .eq('telegram_user_id', user.id.toString())
-    .single();
+  const existingUser = (ctx as any).state.userRecord;
 
   if (!existingUser) {
     // New user - generate referral code
