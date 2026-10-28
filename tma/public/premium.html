@@ -166,8 +166,15 @@
                 btn.disabled = isProcessing;
                 if (isProcessing) {
                     btn.setAttribute('aria-busy', 'true');
+                    if (!btn.hasAttribute('data-original-text')) {
+                        btn.setAttribute('data-original-text', btn.innerHTML);
+                    }
+                    btn.innerHTML = '<span aria-hidden="true">⏳</span> Processing...';
                 } else {
                     btn.removeAttribute('aria-busy');
+                    if (btn.hasAttribute('data-original-text')) {
+                        btn.innerHTML = btn.getAttribute('data-original-text');
+                    }
                 }
             });
         }
