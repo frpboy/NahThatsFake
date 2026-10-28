@@ -37,7 +37,16 @@ export function getScanCoverage(successfulProviderCount: number, threatCount: nu
   return threatCount > 0 ? 'partial' : 'inconclusive';
 }
 
-export async function checkUrlSafety(url: string): Promise<{
+type SafeBrowsingResult = { threats: string[]; safe: boolean };
+type VirusTotalResult = { malicious: number; suspicious: number; harmless: number; undetected: number };
+
+export async function checkUrlSafety(
+  url: string,
+  providers: {
+    google: (url: string) => Promise<SafeBrowsingResult>;
+    virusTotal: (url: string) => Promise<VirusTotalResult>;
+  } = { google: checkGoogleSafeBrowsing, virusTotal: checkVirusTotal }
+): Promise<{
   score: number;
   scan_status: 'complete' | 'partial';
   risk_level: 'HIGH' | 'MEDIUM' | 'LOW';
@@ -46,8 +55,8 @@ export async function checkUrlSafety(url: string): Promise<{
   confidence: number;
 }> {
   const results = await Promise.allSettled([
-    checkGoogleSafeBrowsing(url),
-    checkVirusTotal(url)
+    providers.google(url),
+    providers.virusTotal(url)
   ]);
 
   let totalScore = 0;
@@ -79,6 +88,7 @@ export async function checkUrlSafety(url: string): Promise<{
     if (virusTotalResult.suspicious > 0) {
       totalScore += virusTotalResult.suspicious * 0.05;
       threats.push(`VirusTotal: ${virusTotalResult.suspicious} engines suspicious`);
+      sources.push('VirusTotal');
     }
   }
 
