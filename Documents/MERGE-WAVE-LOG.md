@@ -32,7 +32,7 @@ Use waves of one to three eligible PRs; handle high-risk security changes indivi
 ## Current delta — 2026-10-29
 - Issues #408, #410, and #411 created for missing pinned ESLint tooling/configuration, URL-scan credit loss on inconclusive scans, and misleading loading state on unrelated payment buttons.
 - PR #409 remains open and unmerged at 924e639fe6dcc3843f10a7a181483bbcbe61230c. GitHub Actions run 40930931903 passed both Node 22 and Node 24 jobs (installations and configured checks).
-- Vercel preview at exact head 924e639fe6dcc3843f10a7a181483bbcbe61230c was still QUEUED at last inspection. Earlier head 71df5bd failed on ERR_PNPM_OUTDATED_LOCKFILE; pnpm importer records have since been aligned. No post-fix deployment pass is claimed.
+- Vercel preview at exact head 924e639fe6dcc3843f10a7a181483bbcbe61230c reached READY; the Vercel status check is success and the deployment log confirms pnpm 10.28.0 reported the lockfile up to date. Earlier head 71df5bd failed on ERR_PNPM_OUTDATED_LOCKFILE; importer records were aligned before the passing build.
 - PR #402 remains draft: source review recorded additional provider-response-validation blockers and credit-consumption regression; issue #410 tracks the latter. No production provider or database was tested.
 - PR #403 remains draft and unmerged. Its report matrix now appends current deltas while retaining 2026-10-28 historical rows.
 - Merge waves: 0. Default branch unchanged; no merges/force-pushes/deletions/protection changes.
