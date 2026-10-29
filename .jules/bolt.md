@@ -38,3 +38,6 @@
 ## 2024-08-01 - Redundant Fetching of Context Information
 **Learning:** Found multiple places in `bot/src/index.ts` where we fetch user details that we already have in the global state initialized by the middleware (`(ctx as any).state.userRecord`).
 **Action:** When details are already present on the context state, use `(ctx as any).state.userRecord` directly rather than executing another redundant database round-trip query.
+## 2025-02-12 - Reusing Global User Context State
+**Learning:** In handlers that use `getOrCreateUserByTelegram` or similar helper functions, executing a redundant `select('*')` database query on the `users` table introduces unnecessary latency if the global middleware has already fetched the user record.
+**Action:** Modify the global middleware to `select('*')` and cache the full user object in `(ctx as any).state.userRecord`. Then, update database helper functions to accept this cached record as an optional argument, and pass the context state at the call site to skip the redundant DB lookup.
