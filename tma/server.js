@@ -567,8 +567,9 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
   }
 });
 
-// Start server
-if (process.env.NODE_ENV !== 'production') {
+// Start the server only when this file is the process entry point.
+// Importing the Express app in tests or serverless adapters must not open a listener.
+if (require.main === module && process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });

@@ -215,3 +215,19 @@ For support and questions:
 ---
 
 **Nah That's Fake** - Making the internet a safer place, one check at a time! 🔍✨
+
+## Automated checks
+
+CI uses the checked-in npm lockfiles for the root, bot, and mini app, then runs the root test command. The Vercel project currently selects pnpm because pnpm lockfiles are also present, so manifests touched by this PR keep both npm and pnpm lockfile importer records in sync. The canonical package-manager decision remains tracked in [issue #373](https://github.com/frpboy/NahThatsFake/issues/373). From a clean checkout, run:
+
+```sh
+npm ci
+npm --prefix bot ci
+npm --prefix tma ci
+npm test
+```
+
+The root `npm test` command runs the bot type-check, TypeScript build, and Markdown escaping regression assertions, followed by TMA JavaScript syntax validation and request-level tests. The TMA has no bundler, so its `build` script checks syntax instead of claiming to produce a compiled artifact.
+
+The bot's existing `lint` script is not yet reproducible because ESLint is missing from its manifest/lockfile and no lint configuration is checked in. That gap is tracked separately in [issue #408](https://github.com/frpboy/NahThatsFake/issues/408); CI does not depend on a globally installed linter.
+
