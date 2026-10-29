@@ -11,8 +11,8 @@ Baseline: 682aa8cfb72a15ee69dc796eba00e911d760b418
 
 ## P1 — governance and CI
 6. #400: verify effective branch protection/rulesets through an authorized route; require PRs, approval and checks, prohibit force-push/deletion as appropriate, then test safely.
-7. #401: add PR/push CI for bot typecheck/build/tests and meaningful TMA checks. Replace placeholder root test only after package-manager/workspace strategy is agreed.
-8. #373: choose canonical package manager per workspace and reconcile npm/pnpm lockfiles; verify reproducible installs and dependency audits.
+7. #401: PR #409 now replaces the placeholder root test and adds PR/push CI with TMA smoke tests. CI passed Node 22/24; keep open for review and verify the latest Vercel preview. Bot lint remains excluded pending #408.
+8. #373: PR #409 synchronized root/TMA pnpm importer records after Vercel caught a stale lockfile; still choose canonical package manager per workspace and reconcile npm/pnpm lockfiles; verify reproducible installs and dependency audits.
 
 ## PR #402 static-review blockers
 - Narrow the VirusTotal existing-report fallback to a confirmed not-found response; provider errors/timeouts/rate limits must remain unavailable, not trigger a new submission.
@@ -24,3 +24,9 @@ Review all 29 open PRs and 383 branches by exact head/base SHA, unique commits, 
 
 ## Merge gate
 No PR is eligible until current diff is reviewed, required checks pass, independent approval is present where applicable, dependencies/conflicts are resolved, and post-merge checks are defined. No merges were performed in this run.
+ 
+## Current findings added 2026-10-29
+- #408: Install pinned ESLint + TypeScript lint configuration and lockfile entries; test the clean-install lint command against a deliberate local rule violation before adding it to CI.
+- #410 / #402: Prevent credit loss on inconclusive URL scans with concurrency-safe atomic reservation/settlement or a verified compensating path. Test failed provider, success, concurrent calls, daily/permanent credit, premium/owner handling, and exactly-once charges.
+- #390: Razorpay webhook currently acknowledges with HTTP 200 after fulfilment-path errors. Do not change retry behaviour before the authoritative fulfill_payment SQL is versioned and atomic/idempotency tests run against a disposable database.
+- Latest known PR #409 head 924e639fe6dcc3843f10a7a181483bbcbe61230c: GitHub Actions run 40930931903 passed Node 22 and 24. Vercel preview remained queued at last check; report that result separately.
