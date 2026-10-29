@@ -30,3 +30,7 @@ No PR is eligible until current diff is reviewed, required checks pass, independ
 - #410 / #402: Prevent credit loss on inconclusive URL scans with concurrency-safe atomic reservation/settlement or a verified compensating path. Test failed provider, success, concurrent calls, daily/permanent credit, premium/owner handling, and exactly-once charges.
 - #390: Razorpay webhook currently acknowledges with HTTP 200 after fulfilment-path errors. Do not change retry behaviour before the authoritative fulfill_payment SQL is versioned and atomic/idempotency tests run against a disposable database.
 - Latest known PR #409 head 924e639fe6dcc3843f10a7a181483bbcbe61230c: GitHub Actions run 40930931903 passed Node 22 and 24. Vercel preview remained queued at last check; report that result separately.
+
+ 
+- #411 / #405: update setPaymentProcessing so only the initiating payment button shows the loading label/aria-busy state; keep other buttons disabled if needed for duplicate payment protection. Cover Stars/Razorpay cancel, failure, verification, and success paths in a real test before merge.
+- PR consolidation: #404/#355 overlap on consent state, with #355's unrelated plan.md deletion to resolve; #354/#358/#407 duplicate the same check-details placeholder interaction. Keep one canonical change per behavior and verify diffs before closing duplicate PRs.
