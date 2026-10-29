@@ -18,6 +18,7 @@ Draft remediation: PR #402, branch fix/url-scan-provider-failure-state, head 378
 - #401: CI reliability; PR #409 now replaces root placeholder checks and adds CI, but is unmerged and post-fix Vercel validation remains pending.
 - #408: bot lint is not reproducible; ESLint and TS parser/configuration are missing from the bot manifest/lockfile.
 - #410: PR #402's new inconclusive-scan path may debit credits before the provider call throws; the handler catch does not refund them.
+- #411: PR #405 changes every .btn to “Processing...” for one payment attempt; Sourcery raised this concrete user-facing issue.
 
 ## Coverage ledger
 | Area | Status | Limitation |
@@ -61,3 +62,10 @@ No candidate was independently verified end-to-end in this run. The URL scanner 
 - PR #402 remains draft. Alongside existing provider-adapter review blockers, source inspection shows consumeCredit decrements finite credits before checkUrlSafety throws on an inconclusive scan; the handler catch returns an error without a refund. New issue #410 records the required concurrency-safe credit settlement and tests.
 - Payment review for #390: tma/server.js catches errors during user lookup/fulfilling a Razorpay payment and still returns HTTP 200. The tracked migrations searched do not define fulfill_payment; retry/idempotency changes remain blocked until the authoritative SQL and duplicate/concurrency behaviour are verified.
 - No merge was performed. The Codex review trigger reached the account's review usage limit; the CodeRabbit review of #409 was still in-progress on an earlier head, so no completed independent review is claimed. Current #409 review is pending.
+
+ 
+## Additional review of recent open UI/performance PRs
+- #405: the button-loading patch changes every .btn to “Processing...” for a single selected plan. Sourcery filed a matching medium-priority review comment; issue #411 now tracks scoped loading feedback and terminal-path restoration.
+- #404 and #355 overlap on consent_given middleware state and avoiding per-upload queries. #355 also removes the unrelated tracked plan.md file (-78 lines); comments on both PRs request consolidation and restoration/rationale before merge. #406 also changes the same middleware projection to select all columns, which overlaps the consent projection but does not itself replace the handler-side state usage.
+- #354, #358, and #407 all modify the same viewCheckDetails() stub in tma/public/js/app.js. #407 is the most complete of the inspected variants (includes check ID and a non-Telegram alert fallback). Comments on all three request one canonical PR rather than merging duplicate edits.
+- #406 and #407 have Sourcery approvals recorded, but approval alone does not replace checking branch freshness and all required CI/review gates. #404 has no submitted formal review in the inspected metadata; #405 has a Sourcery COMMENTED review with the button-scope finding.
