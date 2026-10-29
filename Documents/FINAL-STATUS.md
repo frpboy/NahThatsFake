@@ -50,9 +50,10 @@ No secrets printed or committed. No production credentials changed, production t
 
 
 ## Current delta — 2026-10-29
-- Current fully paginated inventory: 17 issues (15 open, 2 closed); 393 PRs (34 open, 359 closed; 61 historically merged); 388 branches. Original 2026-10-28 rows remain historical snapshot data; the matrix appends the five newer PRs (#404–#407, #409) and their branches.
+- Current fully paginated inventory: 18 issues (16 open, 2 closed); 393 PRs (34 open, 359 closed; 61 historically merged); 388 branches. Original 2026-10-28 rows remain historical snapshot data; the matrix appends the five newer PRs (#404–#407, #409) and their branches.
 - Issue #408: missing declared/locked ESLint and TypeScript lint config; open and actionable.
 - Issue #410: pending URL scanner fix may debit finite credits before an inconclusive scan throws; handler catch does not refund; open and actionable. A naive refund is unsafe without concurrency-safe accounting.
+- Issue #411: PR #405 makes all payment buttons display “Processing...” when only one is selected. The existing Sourcery review flagged this; a scoped loading state and terminal-path restoration tests are required.
 - PR #409: open and unmerged at head 924e639fe6dcc3843f10a7a181483bbcbe61230c. GitHub Actions run 40930931903 passed on Node.js 22 and 24. The workflow runs root/bot/TMA npm ci and configured checks.
 - Vercel deployment for PR #409's exact head was still QUEUED when last inspected. Earlier head failed due to stale tma/pnpm-lock.yaml after removing an unused dependency; root and TMA pnpm importer records have since been updated. Deployment success remains unverified.
 - PR #409 review: no formal reviews/inline review threads were found on the current head. Codex review integration reported usage limit; CodeRabbit had not completed review of the current head. Do not claim independent approval.
@@ -60,3 +61,5 @@ No secrets printed or committed. No production credentials changed, production t
 - Issue #390: tracked migrations do not contain the authoritative fulfill_payment definition; the Razorpay webhook handler acknowledges HTTP 200 after fulfilment-path errors. Do not infer duplicate fulfilment without SQL and concurrency evidence.
 - Issue #400 remains blocked: branch protection detail endpoint returned 403 to the current integration, and rulesets query was empty. No settings were modified.
 - No PR was merged. Merge waves: 0. Main/default branch remained unchanged by this session.
+
+- PR consolidation findings: #404/#355 overlap on consent_given, and #355 deletes unrelated plan.md; #354/#358/#407 duplicate the same check-details alert interaction. Comments were posted to the affected PRs; they remain open for maintainer disposition.
