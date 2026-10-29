@@ -30,7 +30,7 @@ Draft remediation: PR #402, branch fix/url-scan-provider-failure-state, head 378
 | URL SSRF | Needs validation | #391; isolated harness not run |
 | RLS and effective grants | Partial | No disposable DB/live policy verification |
 | Dependencies/SBOM/history secrets | Not completed | Scans not executed |
-| CI/CD | Partial | PR #409 adds workflow on feature branch; GitHub Actions passes on Node 22/24; current Vercel preview pending |
+| CI/CD | Partial | PR #409 adds workflow on feature branch; GitHub Actions passes on Node 22/24; Vercel preview READY at current PR #409 head |
 | Accessibility/performance | Not completed | No systematic tests/performance run |
 | Independent verification | Blocked | No separate reviewer available in this run |
 
@@ -57,11 +57,11 @@ No candidate was independently verified end-to-end in this run. The URL scanner 
 ## Current follow-up as of 2026-10-29
 - Complete paginated API snapshot: 17 actual issues (15 open, 2 closed), 393 PRs (34 open, 359 closed, 61 historically merged), 388 branches. The 2026-10-28 CSV rows remain a historical snapshot; current deltas are appended to the matrix.
 - PR #409 (ci/401-reliable-root-checks) current head 924e639fe6dcc3843f10a7a181483bbcbe61230c. GitHub Actions run 40930931903 passed both Node 22 and Node 24 jobs, including npm ci for root, bot and TMA and the configured root test command.
-- Vercel preview for that exact head is still queued. An earlier head failed with ERR_PNPM_OUTDATED_LOCKFILE because the TMA pnpm importer still referenced removed supertest; root and TMA pnpm importer records were subsequently synchronized. Do not mark Vercel green until the latest deployment reaches READY.
+- Vercel preview for that exact head has reached READY and the Vercel commit status is success. An earlier head failed with ERR_PNPM_OUTDATED_LOCKFILE because the TMA pnpm importer still referenced removed supertest; root and TMA pnpm importer records were subsequently synchronized. Do not mark Vercel green until the latest deployment reaches READY.
 - Issue #408 records the missing pinned ESLint tooling and configuration. The lint script was excluded from the new workflow rather than faked or silently substituted by typecheck.
 - PR #402 remains draft. Alongside existing provider-adapter review blockers, source inspection shows consumeCredit decrements finite credits before checkUrlSafety throws on an inconclusive scan; the handler catch returns an error without a refund. New issue #410 records the required concurrency-safe credit settlement and tests.
 - Payment review for #390: tma/server.js catches errors during user lookup/fulfilling a Razorpay payment and still returns HTTP 200. The tracked migrations searched do not define fulfill_payment; retry/idempotency changes remain blocked until the authoritative SQL and duplicate/concurrency behaviour are verified.
-- No merge was performed. The Codex review trigger reached the account's review usage limit; the CodeRabbit review of #409 was still in-progress on an earlier head, so no completed independent review is claimed. Current #409 review is pending.
+- No merge was performed. The Codex review trigger reached the account's review usage limit. Sourcery and CodeRabbit reviewed an earlier head; the CodeRabbit lockfile comment was verified, replied to and resolved after checking the current Vercel build, but the current head has not received a fresh complete independent review.
 
  
 ## Additional review of recent open UI/performance PRs
