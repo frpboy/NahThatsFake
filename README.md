@@ -218,7 +218,7 @@ For support and questions:
 
 ## Automated checks
 
-The repository CI installs the checked-in npm lockfiles for the root, bot, and mini app, then runs the root test command. From a clean checkout, run:
+CI uses the checked-in npm lockfiles for the root, bot, and mini app, then runs the root test command. The Vercel project currently selects pnpm because pnpm lockfiles are also present, so manifests touched by this PR keep both npm and pnpm lockfile importer records in sync. The canonical package-manager decision remains tracked in [issue #373](https://github.com/frpboy/NahThatsFake/issues/373). From a clean checkout, run:
 
 ```sh
 npm ci
