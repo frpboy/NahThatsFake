@@ -19,7 +19,7 @@ export async function processLinkCheck(ctx: Context) {
 
   try {
     const dbUser = actingTelegramUserId === user.id.toString()
-      ? await getOrCreateUserByTelegram(user)
+      ? await getOrCreateUserByTelegram(user, (ctx as any).state?.userRecord)
       : await getUserByTelegramId(actingTelegramUserId);
 
     if (!dbUser) {

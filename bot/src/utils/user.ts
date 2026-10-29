@@ -6,7 +6,8 @@ export async function getOrCreateUserByTelegram(telegramUser: {
   first_name: string;
   last_name?: string;
   username?: string;
-}) {
+}, cachedRecord?: any) {
+  if (cachedRecord) return cachedRecord;
   const telegramUserId = telegramUser.id.toString();
 
   const { data: existing } = await supabase

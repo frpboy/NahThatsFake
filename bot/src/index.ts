@@ -134,7 +134,7 @@ bot.use(async (ctx, next) => {
   // Fetch role and ban/throttle status in one go to prevent N+1 queries
   const { data } = await supabase
     .from('users')
-    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until')
+    .select('*')
     .eq('telegram_user_id', user.id.toString())
     .maybeSingle();
 
@@ -441,7 +441,7 @@ bot.command('history', async (ctx) => {
 
   const actingTelegramUserId = getActingTelegramUserId(ctx);
   const dbUser = actingTelegramUserId === user.id.toString()
-    ? await getOrCreateUserByTelegram(user)
+    ? await getOrCreateUserByTelegram(user, (ctx as any).state?.userRecord)
     : await getUserByTelegramId(actingTelegramUserId);
 
   if (!dbUser) {

@@ -26,7 +26,7 @@ export async function processImageCheck(ctx: Context) {
     }
 
     const dbUser = actingTelegramUserId === user.id.toString()
-      ? await getOrCreateUserByTelegram(user)
+      ? await getOrCreateUserByTelegram(user, (ctx as any).state?.userRecord)
       : await getUserByTelegramId(actingTelegramUserId);
 
     if (!dbUser) {
