@@ -31,10 +31,10 @@ Visibility: public
 The inventory was captured before creating the reporting branch and draft PR #403; it intentionally does not include its own branch/PR in the 382-branch/387-PR baseline snapshot.
 
 ## Current delta checked 2026-10-29
-- Current paginated GitHub API snapshot: 17 actual issues (15 open, 2 closed), 393 pull requests (34 open, 359 closed; 61 historically merged), and 388 branches.
-- Changes since the 2026-10-28 report snapshot include open PRs #404, #405, #406, #407, and #409 plus five corresponding feature branches, and issues #408 (missing reproducible ESLint setup) and #410 (credit loss on inconclusive URL scans). The PR/branch matrix keeps the original snapshot and appends those verified deltas.
+- Current paginated GitHub API snapshot as of this later pass: 18 actual issues (16 open, 2 closed), 393 pull requests (34 open, 359 closed; 61 historically merged), and 388 branches.
+- Changes since the 2026-10-28 report snapshot include open PRs #404, #405, #406, #407, and #409 plus five corresponding feature branches, and issues #408 (missing reproducible ESLint setup), #410 (credit loss on inconclusive URL scans), and #411 (misleading loading state across unrelated payment buttons). The PR/branch matrix keeps the original snapshot and appends those verified deltas.
 - PR #409 head: 924e639fe6dcc3843f10a7a181483bbcbe61230c; GitHub Actions passed on Node.js 22 and 24 (run 40930931903). The current Vercel preview for this head remains queued; an earlier head failed with ERR_PNPM_OUTDATED_LOCKFILE before the pnpm lockfile importer fix.
-- Issue #401 remains open pending review and a confirmed post-fix Vercel deployment. Issue #408 remains open because ESLint tooling/configuration is not checked in.
+- Issue #401 remains open pending review and a confirmed post-fix Vercel deployment. Issue #408 remains open because ESLint tooling/configuration is not checked in. Issue #411 tracks the unaddressed Sourcery finding on PR #405.
 - Issue #390 source review confirmed the Razorpay webhook acknowledges with HTTP 200 after a fulfilment-path error, while the authoritative fulfill_payment SQL definition is absent from tracked migrations. Duplicate credit/entitlement behaviour is not proven; do not change retry/idempotency semantics without versioned SQL and isolated tests.
 
 ## Completeness note
