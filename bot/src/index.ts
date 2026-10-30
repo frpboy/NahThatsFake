@@ -134,7 +134,7 @@ bot.use(async (ctx, next) => {
   // Fetch role and ban/throttle status in one go to prevent N+1 queries
   const { data } = await supabase
     .from('users')
-    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until')
+    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until, referral_code')
     .eq('telegram_user_id', user.id.toString())
     .maybeSingle();
 
@@ -378,14 +378,18 @@ bot.command('refer', async (ctx) => {
   const isImpersonating = Boolean((ctx as any).state?.isImpersonating);
 
   // Get or create referral code
-  const { data } = await supabase
-    .from('users')
-    .select('referral_code')
-    .eq('telegram_user_id', actingTelegramUserId)
-    .single();
-
-  let referralCode = data?.referral_code;
+  let referralCode = !isImpersonating ? (ctx as any).state.userRecord?.referral_code : undefined;
   
+  if (!referralCode) {
+    const { data } = await supabase
+      .from('users')
+      .select('referral_code')
+      .eq('telegram_user_id', actingTelegramUserId)
+      .maybeSingle();
+
+    referralCode = data?.referral_code;
+  }
+
   if (!referralCode) {
     if (isImpersonating) {
       await ctx.reply('Referral code is not set for this user. (Impersonation is read-only.)');
