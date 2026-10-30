@@ -38,3 +38,8 @@
 ## 2024-08-01 - Redundant Fetching of Context Information
 **Learning:** Found multiple places in `bot/src/index.ts` where we fetch user details that we already have in the global state initialized by the middleware (`(ctx as any).state.userRecord`).
 **Action:** When details are already present on the context state, use `(ctx as any).state.userRecord` directly rather than executing another redundant database round-trip query.
+
+## 2025-02-12 - Redundant Field Fetching When Full Record is Available
+
+**Learning:** When handlers start by fetching a user's entire database record, or when middleware pre-fetches it and saves to state (`(ctx as any).state.userRecord`), making subsequent standalone database queries within handlers (like `/refer`) to fetch specific fields like `referral_code` from the same user creates unnecessary network latency and DB load.
+**Action:** Include the needed field (like `referral_code`) in the middleware's initial `select()` list, and extract it directly from the pre-fetched `userRecord` object using optional chaining (e.g., `userRecord?.referral_code`) rather than running redundant database queries.
