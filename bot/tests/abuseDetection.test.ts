@@ -20,7 +20,7 @@ async function run() {
   });
   assert.deepEqual(returnedError, { recorded: false, enforcement: 'skipped', reason: 'insert_failed' });
   assert.equal(enforcementCalls, 1);
-  assert.deepEqual(events.at(-1), { event: 'insert_failed', code: '42501' });
+  assert.deepEqual(events[events.length - 1], { event: 'insert_failed', code: '42501' });
 
   const transportError = await recordAbuseFlag('user-3', 'spam', {}, {
     insertFlag: async () => { throw new Error('synthetic transport failure'); },
@@ -29,7 +29,7 @@ async function run() {
   });
   assert.deepEqual(transportError, { recorded: false, enforcement: 'skipped', reason: 'insert_failed' });
   assert.equal(enforcementCalls, 1);
-  assert.deepEqual(events.at(-1), { event: 'insert_failed', code: 'transport_error' });
+  assert.deepEqual(events[events.length - 1], { event: 'insert_failed', code: 'transport_error' });
 
   console.log('abuse flag persistence assertions passed');
 }
