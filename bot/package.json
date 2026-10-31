@@ -9,15 +9,10 @@
     "dev": "ts-node src/index.ts",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test:markdown": "ts-node tests/markdown.test.ts"
+    "test:markdown": "ts-node tests/markdown.test.ts",
+    "test:abuse-detection": "ts-node tests/abuseDetection.test.ts"
   },
-  "keywords": [
-    "telegram",
-    "bot",
-    "deepfake",
-    "scam",
-    "detection"
-  ],
+  "keywords": ["telegram", "bot", "deepfake", "scam", "detection"],
   "author": "Nah That's Fake Team",
   "license": "MIT",
   "dependencies": {
