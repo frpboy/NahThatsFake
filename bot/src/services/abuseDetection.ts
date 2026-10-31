@@ -4,9 +4,13 @@ import { recordAbuseFlag } from './abuseDetectionCore';
 
 export { AbuseFlagResult, recordAbuseFlag } from './abuseDetectionCore';
 
-export async function flagUser(userId: string, flagType: string, details: any) {
+export async function flagUser(
+  userId: string, // UUID
+  flagType: string,
+  details: any
+) {
   return recordAbuseFlag(userId, flagType, details, {
-    insertFlag: flag => supabase.from('abuse_flags').insert(flag),
+    insertFlag: async flag => await supabase.from('abuse_flags').insert(flag),
     enforce: checkAbuseAndEnforce,
     logError: (event, code) => {
       // Never log submitted details or raw database error messages.
