@@ -53,3 +53,10 @@
 **Vulnerability:** User-controlled input (check details) was injected directly into the DOM using `innerHTML` without sanitization.
 **Learning:** Even static HTML strings assigned to `innerHTML` are flagged by linters and reviewers as security risks, as `innerHTML` is inherently unsafe and a potential vector for Cross-Site Scripting (XSS) if user input is accidentally interpolated later.
 **Prevention:** Avoid `innerHTML` entirely. Use `textContent`, `innerText` or safe DOM manipulation methods like `document.createElement` and `appendChild` to build UI components safely and securely, preventing future developers from accidentally introducing XSS vulnerabilities.
+## 2024-10-24 - [CRITICAL] Fix Markdown Injection DoS in Admin Commands
+**Vulnerability:** User-provided inputs (`paymentId`, `groupId`, `e.text` from DB logs, and `f.key` from feature flags) were interpolated directly into Markdown strings in bot replies without escaping special characters.
+**Learning:** A malicious user or an administrator operating on malicious data could trigger a `400 Bad Request` from the Telegram API by inserting unescaped backticks or asterisks, leading to a localized Denial of Service (DoS) where the bot fails to respond or perform logging actions properly.
+**Prevention:** Wrap all interpolated variables with the existing `escapeMarkdown` utility to sanitize special characters before passing them to the Telegram API in `parse_mode: 'Markdown'`.
+## 2024-10-24 - [CRITICAL] Prevent Markdown Injection inside Code Blocks
+**Learning:** In Telegram's legacy `Markdown` parse mode, characters inside code blocks (`` ` ` ``) are inherently treated literally by the Markdown parser. Therefore, escaping characters inside these code blocks is not supported, and if attempted, Telegram will render the backslashes literally (e.g. `` `pi\_123` `` instead of `` `pi_123` ``). This breaks formatting and usability.
+**Prevention:** Only use `escapeMarkdown` on variables that are outside of formatting entities like code blocks. Do not escape variables that are explicitly enclosed in code blocks (e.g., `paymentId` or `groupId` when wrapped in backticks).

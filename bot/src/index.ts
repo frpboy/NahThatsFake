@@ -1127,7 +1127,7 @@ bot.command('timeline', async (ctx) => {
   events.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
   const top = events.slice(0, 20);
   const label = target.username ? `@${target.username}` : (target.first_name || 'User');
-  const lines = top.map(e => `• ${new Date(e.ts).toLocaleDateString()} — ${e.text}`).join('\n');
+  const lines = top.map(e => `• ${new Date(e.ts).toLocaleDateString()} — ${escapeMarkdown(e.text)}`).join('\n');
 
   await ctx.reply(`📜 *User Timeline — ${escapeMarkdown(label)}*\n\n${lines}`, { parse_mode: 'Markdown' });
 });
@@ -1205,7 +1205,7 @@ bot.command('flag', async (ctx) => {
 
     const lines = data.map((f: any) => {
       const target = f.scope === 'global' ? 'GLOBAL' : `${String(f.scope).toUpperCase()}:${f.scope_id}`;
-      return `• ${f.key} | ${target} | ${f.enabled ? 'ON' : 'OFF'}`;
+      return `• ${escapeMarkdown(f.key)} | ${escapeMarkdown(target)} | ${f.enabled ? 'ON' : 'OFF'}`;
     }).join('\n');
 
     await ctx.reply(`🚩 *Feature Flags*\n\n${lines}`, { parse_mode: 'Markdown' });
