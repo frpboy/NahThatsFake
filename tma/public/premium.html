@@ -66,7 +66,7 @@
             cursor: pointer;
             width: 100%;
             margin-top: 8px;
-            transition: opacity 0.2s ease, filter 0.2s ease;
+            transition: opacity 0.2s ease, filter 0.2s ease, transform 0.1s ease;
         }
         .btn-stars { background: #FFD700; color: #000; }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -74,6 +74,10 @@
             .btn:not(:disabled):hover {
                 filter: brightness(0.9);
             }
+        }
+        .btn:not(:disabled):active {
+            transform: scale(0.98);
+            opacity: 0.9;
         }
         .btn:focus-visible { outline: 2px solid var(--tg-theme-button-color); outline-offset: 2px; }
         
@@ -160,14 +164,33 @@
         const user = tg.initDataUnsafe?.user;
         const userId = user ? user.id : null;
 
+        let activePaymentBtn = null;
+        let activeBtnOriginalText = '';
+
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn');
+            if (btn && !btn.disabled) {
+                activePaymentBtn = btn;
+                activeBtnOriginalText = btn.innerHTML;
+            }
+        }, true);
+
         function setPaymentProcessing(isProcessing) {
             const buttons = document.querySelectorAll('.btn');
             buttons.forEach(btn => {
                 btn.disabled = isProcessing;
                 if (isProcessing) {
                     btn.setAttribute('aria-busy', 'true');
+                    if (btn === activePaymentBtn) {
+                        btn.innerHTML = '⏳ Processing...';
+                    }
                 } else {
                     btn.removeAttribute('aria-busy');
+                    if (btn === activePaymentBtn && activeBtnOriginalText) {
+                        btn.innerHTML = activeBtnOriginalText;
+                        activePaymentBtn = null;
+                        activeBtnOriginalText = '';
+                    }
                 }
             });
         }
