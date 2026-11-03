@@ -1,4 +1,3 @@
-
 <!-- PolicyChecks badges: repository policy status -->
 <p align="center">
   <a href="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/secret-push-protection-enabled/details.json"><img alt="Secret push protection" src="https://policychecks.reponomics.org/github/frpboy/NahThatsFake/secret-push-protection-enabled.svg"></a>
@@ -16,202 +15,211 @@
 </p>
 <!-- End PolicyChecks badges -->
 
-# Nah That's Fake - Telegram Bot & TMA
+# Nah That's Fake — Telegram Bot & Mini App
 
-A comprehensive deepfake and scam detection system built for Telegram, featuring both a bot and a Telegram Mini App (TMA).
+A Telegram-based deepfake and scam detection system with a Telegram bot, Telegram Mini App (TMA), and Supabase-backed data layer.
 
 ## Links
 
-- **Live demo:** https://nahthatsfake.vercel.app/
-- **Source code:** https://github.com/frpboy/NahThatsFake
+- **Live app:** https://nahthatsfake.vercel.app/
+- **Source:** https://github.com/frpboy/NahThatsFake
 
-## 🚀 Features
+## Features
 
-- **Deepfake Detection**: AI-powered image analysis to detect AI-generated content
-- **Scam Link Detection**: Multi-vendor URL scanning for phishing and malware
-- **Telegram Integration**: Seamless bot and TMA experience
-- **Premium Plans**: Razorpay and Telegram Stars payment integration
-- **Referral System**: Earn credits by inviting friends
-- **Rate Limiting**: Built-in abuse prevention
-- **Real-time Analytics**: Comprehensive check history and statistics
+- AI-assisted image/deepfake analysis
+- Multi-provider URL safety checks
+- Telegram bot and Mini App workflows
+- Premium plans and payment integrations (Razorpay and Telegram Stars)
+- Referral credits
+- Abuse prevention and rate limiting
+- Check history and usage analytics
 
-## 📁 Project Structure
+## Repository layout
 
-```
+The following paths reflect the current repository tree:
+
+```text
 NahThatsFake/
-├── bot/                    # Telegram Bot (Node.js + TypeScript)
+├── .env.example             # Shared environment-variable template
+├── bot/
 │   ├── src/
-│   │   ├── index.ts       # Main bot entry point
-│   │   ├── handlers/    # Command and message handlers
-│   │   ├── utils/       # Utility functions
-│   │   └── middleware/  # Rate limiting, consent, etc.
-│   └── package.json
-├── tma/                   # Telegram Mini App
-│   ├── index.html       # TMA frontend
-│   ├── server.js        # TMA backend server
-│   └── package.json
-├── supabase/             # Database schema and migrations
-│   ├── schema.sql       # Database tables
-│   ├── rls_policies.sql # Row Level Security
-│   └── functions.sql    # PostgreSQL functions
-└── shared/              # Shared types and utilities
+│   │   ├── handlers/
+│   │   ├── middleware/
+│   │   ├── services/
+│   │   └── utils/
+│   ├── tests/
+│   ├── package.json
+│   └── pnpm-lock.yaml
+├── tma/
+│   ├── api/index.js         # Vercel API entry point
+│   ├── public/
+│   │   ├── css/
+│   │   ├── js/
+│   │   ├── index.html
+│   │   └── premium.html
+│   ├── server.js
+│   ├── package.json
+│   ├── package-lock.json
+│   └── pnpm-lock.yaml
+├── supabase/
+│   └── migrations/          # Checked-in SQL migration files
+├── Documents/               # Project specifications and reports
+├── Current_Schema.md        # Schema snapshot; explicitly context-only
+├── DEPLOYMENT.md
+├── docker-compose.yml
+├── nginx.conf
+└── vercel.json
 ```
 
-## 🛠️ Tech Stack
+There is no `shared/` or top-level `docs/` directory in the current tree. Project documents are under `Documents/`.
 
-### Backend
-- **Node.js** with TypeScript
-- **Grammy** - Telegram Bot Framework
-- **Supabase** - PostgreSQL database and authentication
-- **Axios** - HTTP client for API calls
+## Technology
 
-### Frontend (TMA)
-- **HTML/CSS/JavaScript** - Vanilla JS for TMA
-- **Express.js** - Backend API server
-- **Telegram Web App SDK** - TMA integration
+### Telegram bot
+- Node.js and TypeScript
+- grammY
+- Supabase JavaScript client
+- Axios and node-cron
 
-### APIs
-- **Sightengine** - Deepfake detection
-- **Google Safe Browsing** - URL safety
-- **VirusTotal** - Multi-vendor URL scanning
-- **Razorpay** - Payment processing
+### Telegram Mini App
+- Vanilla HTML, CSS, and JavaScript
+- Node.js and Express
+- Telegram Web App SDK
+- Supabase and Razorpay integrations
 
-## 🚀 Getting Started
+### Data and hosting
+- Supabase PostgreSQL with SQL migrations and Row Level Security
+- Vercel for the Mini App/API deployment
+- Docker Compose and Nginx configuration for self-hosted deployments
+
+### External services
+- Sightengine for image analysis
+- Google Safe Browsing and VirusTotal for URL intelligence
+- Razorpay and Telegram Stars for payments
+
+## Getting started
 
 ### Prerequisites
-- Node.js 18+ 
-- Telegram Bot Token
-- Supabase account and project
-- API keys for detection services
 
-### 1. Clone and Setup
+- Node.js and the package manager selected for the component being installed
+- A Telegram bot token
+- A Supabase project
+- Provider credentials for the features you intend to enable
+
+### 1. Clone the repository
+
 ```bash
-git clone <repository-url>
+git clone https://github.com/frpboy/NahThatsFake.git
 cd NahThatsFake
 ```
 
-### 2. Setup Database
-1. Create a Supabase project
-2. Run the schema migrations in `supabase/schema.sql`
-3. Apply RLS policies from `supabase/rls_policies.sql`
-4. Add database functions from `supabase/functions.sql`
+### 2. Configure environment variables
 
-### 3. Configure Bot
+The only checked-in environment template is the root `.env.example`. Create a component-local environment file so the process can load it from its working directory:
+
+```bash
+cp .env.example bot/.env
+cp .env.example tma/.env
+```
+
+Edit each file and keep only the values required by that server. At minimum, the bot requires `BOT_TOKEN`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`. The bot also accepts optional detection-provider credentials and `TMA_URL`.
+
+The TMA server uses `SUPABASE_URL` and `SUPABASE_ANON_KEY`; payment and webhook functionality may require the corresponding server-side Razorpay and Supabase credentials. Set `ALLOWED_ORIGINS` to the exact trusted web origins for the deployment.
+
+Never commit either `.env` file. Never expose the Supabase service-role key or Razorpay secret to browser-side code.
+
+### 3. Install and run the bot
+
+The bot directory currently contains a pnpm lockfile:
+
 ```bash
 cd bot
-cp .env.example .env
-# Edit .env with your credentials
-npm install
-npm run build
-npm start
+pnpm install --frozen-lockfile
+pnpm run typecheck
+pnpm run build
+pnpm start
 ```
 
-### 4. Configure TMA
+### 4. Install and run the TMA server
+
+The TMA directory currently contains an npm lockfile:
+
 ```bash
 cd tma
-cp .env.example .env
-# Edit .env with your credentials
-npm install
+npm ci
 npm start
 ```
 
-## 🔧 Configuration
+**Package-manager note:** the TMA and repository root also contain pnpm lockfiles. The repository's package-manager standardisation is tracked separately in [issue #373](https://github.com/frpboy/NahThatsFake/issues/373). Do not update one lockfile independently of the others until that policy is resolved. The root package manifest is not a workspace entry point for the bot or TMA.
 
-### Environment Variables (Bot)
-```env
-BOT_TOKEN=your_telegram_bot_token
-SUPABASE_URL=your_supabase_url
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-SUPABASE_ANON_KEY=your_supabase_anon_key
-```
+## Database setup and migrations
 
-### Environment Variables (TMA)
-```env
-SUPABASE_URL=your_supabase_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
-RAZORPAY_KEY_ID=your_razorpay_key_id
-RAZORPAY_KEY_SECRET=your_razorpay_key_secret
-PORT=3000
-```
+The executable SQL files are under `supabase/migrations/`. The old paths `supabase/schema.sql`, `supabase/rls_policies.sql`, and `supabase/functions.sql` do not exist in this repository.
 
-## 📊 Database Schema
+Important safeguards:
 
-### Core Tables
-- **users** - User profiles and subscription status
-- **checks** - History of all image/link checks
-- **check_cache** - Caching layer for API responses
-- **payments** - Payment history and transactions
-- **referrals** - Referral tracking and credits
-- **groups** - Telegram group premium status
-- **abuse_flags** - Abuse detection and prevention
+- `Current_Schema.md` is labelled as a context-only schema snapshot; it is not a migration and must not be executed as SQL.
+- The migrations directory contains both timestamped and legacy-named SQL files. Do not assume a simple alphabetical replay is safe.
+- This repository does not currently include `supabase/config.toml`; a linked Supabase CLI migration workflow is therefore not configured by this checkout.
+- For an existing project, reconcile its applied migration history before running anything. Do not replay the full directory against a live database.
+- For a fresh project, have the database owner review the migration dependencies and apply the intended sequence in a disposable/staging project before production.
 
-## 🎯 Bot Commands
+No production migration should be run as part of local setup or this documentation change.
 
-- `/start` - Welcome and onboarding
-- `/check` - Prompt to send content for checking
-- `/credits` - View credit balance
-- `/refer` - Generate referral link
-- `/history` - View recent checks
-- `/premium` - Premium subscription options
+## Useful project documentation
 
-## 💳 Pricing Plans
+- `DEPLOYMENT.md` — deployment options and operational checklist
+- `Documents/Tech_Stack_Report.md` — technology stack report
+- `Documents/Project_Status_Report.md` — project status
+- `Documents/BSChecker_Doc1_PRD.html` through `BSChecker_Doc13_Tracker.html` — product and engineering specifications
+- `Current_Schema.md` — reference snapshot only, not executable SQL
 
-### Individual Plans
-- **Free**: 3 checks/day + bonus credits
-- **Monthly**: ₹99 - Unlimited checks
-- **Annual**: ₹799 - Unlimited checks (33% off)
+## Database tables
 
-### Group Plans
-- **Group Monthly**: ₹299 - Unlimited group checks
+The schema includes user accounts, checks, cached results, payments, referrals, groups, abuse flags, feedback, and related operational data. Consult the checked-in migrations and current database state rather than treating this summary as a complete schema definition.
 
-## 🔒 Security Features
+## Bot commands
 
-- Row Level Security (RLS) policies
-- Rate limiting and abuse detection
-- API key management
-- Privacy-first design (no image storage)
-- Secure payment processing
+- `/start` — onboarding
+- `/check` — start a content check
+- `/credits` — view credit balance
+- `/refer` — referral link
+- `/history` — recent checks
+- `/premium` — premium options
 
-## 🚀 Deployment
+## Pricing
 
-### Bot Deployment
-1. Build the bot: `npm run build`
-2. Deploy to your preferred hosting (Railway, Render, etc.)
-3. Set environment variables
-4. Start the bot service
+The application has individual and group plans, including time-based subscriptions and credit packs. The live Mini App is the source of truth for currently offered prices and payment options.
 
-### TMA Deployment
-1. Deploy the TMA server to a hosting platform
-2. Configure HTTPS (required for TMA)
-3. Update bot to point to TMA URL
-4. Configure Telegram Mini App settings
+## Security
 
-## 📈 Monitoring
+- Supabase Row Level Security
+- Bot-side abuse detection and rate limiting
+- Server-side payment verification
+- Environment-based secret configuration
+- Image analysis without intentionally retaining uploaded image files as application content
 
-- Database performance monitoring via Supabase
-- Bot analytics through Telegram
-- Payment tracking through Razorpay dashboard
-- Error logging and alerting
+## Deployment
 
-## 🤝 Contributing
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the deployment overview. The repository includes:
+- `vercel.json` for Vercel routing
+- `docker-compose.yml` for container orchestration
+- `nginx.conf` as a self-hosted reverse-proxy example
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+Review environment variables, CORS origins, TLS configuration, database migration state, and health checks before deploying. The checked-in deployment files are examples and must be reconciled with the target environment.
 
-## 📄 License
+## Contributing
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+1. Review the repository issues and existing pull requests before starting work.
+2. Create a focused feature branch.
+3. Follow the component's existing package and test conventions.
+4. Run the relevant type checks, builds, and tests.
+5. Open a pull request with the rationale and validation evidence.
 
-## 🆘 Support
+## License
 
-For support and questions:
-- Create an issue in the repository
-- Contact the development team
-- Check the documentation in the `/docs` folder
+MIT — see [LICENSE](LICENSE).
 
 ---
 
-**Nah That's Fake** - Making the internet a safer place, one check at a time! 🔍✨
+**Nah That's Fake** — making the internet a safer place, one check at a time.
