@@ -49,6 +49,7 @@ NahThatsFake/
 │   │   └── utils/
 │   ├── tests/
 │   ├── package.json
+│   ├── package-lock.json
 │   └── pnpm-lock.yaml
 ├── tma/
 │   ├── api/index.js         # Vercel API entry point
@@ -101,7 +102,8 @@ There is no `shared/` or top-level `docs/` directory in the current tree. Projec
 
 ### Prerequisites
 
-- Node.js and the package manager selected for the component being installed
+- Node.js 20 or newer (the checked-in Supabase client dependency requires Node.js 20+)
+- npm
 - A Telegram bot token
 - A Supabase project
 - Provider credentials for the features you intend to enable
@@ -130,19 +132,17 @@ Never commit either `.env` file. Never expose the Supabase service-role key or R
 
 ### 3. Install and run the bot
 
-The bot directory currently contains a pnpm lockfile:
+The bot directory currently contains an npm lockfile:
 
 ```bash
 cd bot
-pnpm install --frozen-lockfile
-pnpm run typecheck
-pnpm run build
-pnpm start
+npm ci
+npm run typecheck
+npm run build
+npm start
 ```
 
 ### 4. Install and run the TMA server
-
-The TMA directory currently contains an npm lockfile:
 
 ```bash
 cd tma
@@ -150,7 +150,7 @@ npm ci
 npm start
 ```
 
-**Package-manager note:** the TMA and repository root also contain pnpm lockfiles. The repository's package-manager standardisation is tracked separately in [issue #373](https://github.com/frpboy/NahThatsFake/issues/373). Do not update one lockfile independently of the others until that policy is resolved. The root package manifest is not a workspace entry point for the bot or TMA.
+**Package-manager note:** the repository root, bot, and TMA currently contain both npm and pnpm lockfiles. This README uses the checked-in npm lockfiles for reproducible npm installs. The canonical package-manager policy and lockfile cleanup are tracked separately in [issue #373](https://github.com/frpboy/NahThatsFake/issues/373). Do not update only one lockfile when changing dependencies; keep the competing lockfiles synchronized until that policy is resolved. The root package manifest is not a workspace entry point for the bot or TMA.
 
 ## Database setup and migrations
 
@@ -171,7 +171,7 @@ No production migration should be run as part of local setup or this documentati
 - `DEPLOYMENT.md` — deployment options and operational checklist
 - `Documents/Tech_Stack_Report.md` — technology stack report
 - `Documents/Project_Status_Report.md` — project status
-- `Documents/BSChecker_Doc1_PRD.html` through `BSChecker_Doc13_Tracker.html` — product and engineering specifications
+- `Documents/BSChecker_Doc1_PRD.html` through `Documents/BSChecker_Doc13_Tracker.html` — product and engineering specifications
 - `Current_Schema.md` — reference snapshot only, not executable SQL
 
 ## Database tables
