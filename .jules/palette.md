@@ -1,0 +1,3 @@
+## 2024-11-04 - Localized Feedback for Payment Buttons
+**Learning:** Globally disabling buttons during async operations without localized visual feedback leaves users unsure if their specific action registered. The global `setPaymentProcessing` locked the interface but didn't indicate *which* purchase was processing.
+**Action:** Implemented a capturing event listener to track the `activePaymentBtn` before global logic executes, allowing inline visual feedback (spinner/text) on the specific clicked element. Combined with tactile `:active` styles (`transform: scale(0.98)`), this significantly improves the perceived responsiveness of the interaction.
