@@ -38,3 +38,7 @@
 ## 2024-08-01 - Redundant Fetching of Context Information
 **Learning:** Found multiple places in `bot/src/index.ts` where we fetch user details that we already have in the global state initialized by the middleware (`(ctx as any).state.userRecord`).
 **Action:** When details are already present on the context state, use `(ctx as any).state.userRecord` directly rather than executing another redundant database round-trip query.
+
+## 2025-02-12 - Reusing Global Middleware Context State to Eliminate Redundant DB Queries
+**Learning:** Found multiple places in `bot/src/index.ts` where image handlers (`message:photo`, `message:document`) redundantly queried the `users` table for the `consent_given` field right after it could have been fetched by the initial `bot.use` global authentication/ban check middleware.
+**Action:** When details about a user are needed in command or text handlers, include them in the initial `select()` query of the global middleware and pull them directly from `(ctx as any).state.userRecord` rather than executing redundant database round-trip queries.
