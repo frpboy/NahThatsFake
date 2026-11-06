@@ -160,16 +160,37 @@
         const user = tg.initDataUnsafe?.user;
         const userId = user ? user.id : null;
 
+        let activePaymentBtn = null;
+        let originalBtnContent = '';
+
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn');
+            if (btn && !btn.disabled) {
+                activePaymentBtn = btn;
+                originalBtnContent = btn.innerHTML;
+            }
+        }, true);
+
         function setPaymentProcessing(isProcessing) {
             const buttons = document.querySelectorAll('.btn');
             buttons.forEach(btn => {
                 btn.disabled = isProcessing;
                 if (isProcessing) {
                     btn.setAttribute('aria-busy', 'true');
+                    if (btn === activePaymentBtn) {
+                        btn.innerHTML = '<span aria-hidden="true">⏳</span> Processing...';
+                    }
                 } else {
                     btn.removeAttribute('aria-busy');
+                    if (btn === activePaymentBtn && originalBtnContent) {
+                        btn.innerHTML = originalBtnContent;
+                    }
                 }
             });
+            if (!isProcessing) {
+                activePaymentBtn = null;
+                originalBtnContent = '';
+            }
         }
 
         // 1. Telegram Stars Payment
