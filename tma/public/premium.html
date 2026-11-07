@@ -75,6 +75,10 @@
                 filter: brightness(0.9);
             }
         }
+        .btn:not(:disabled):active {
+            transform: scale(0.98);
+            opacity: 0.9;
+        }
         .btn:focus-visible { outline: 2px solid var(--tg-theme-button-color); outline-offset: 2px; }
         
         .hidden { display: none; }
