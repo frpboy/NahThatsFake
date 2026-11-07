@@ -69,7 +69,8 @@ export async function processLinkCheck(ctx: Context) {
 
     // Normalize URL for hashing
     const normalizedUrl = normalizeUrl(url);
-    const urlHash = crypto.createHash('sha256').update(normalizedUrl).digest('hex');
+    // Version the cache key so legacy results created by fail-open provider handling are not reused.
+    const urlHash = crypto.createHash('sha256').update(`urlscanner-v2:${normalizedUrl}`).digest('hex');
 
     // Check cache first
     const { data: cached } = await supabase
@@ -85,6 +86,7 @@ export async function processLinkCheck(ctx: Context) {
       result = {
         score: cached.score,
         risk_level: cached.risk_level,
+        scan_status: 'complete' as const,
         cached: true,
         api_source: cached.api_source
       };
@@ -95,19 +97,22 @@ export async function processLinkCheck(ctx: Context) {
       result = {
         score: apiResult.score,
         risk_level: apiResult.risk_level,
+        scan_status: apiResult.scan_status,
         cached: false,
         api_source: apiResult.sources.join(', ') || 'unknown'
       };
       
-      // Cache the result
-      await supabase.from('check_cache').insert({
+      // Only cache complete two-provider scans; partial detections are ephemeral.
+      if (apiResult.scan_status === 'complete') {
+        await supabase.from('check_cache').insert({
         check_type: 'link',
         content_hash: urlHash,
         score: result.score,
         risk_level: result.risk_level,
         api_source: result.api_source,
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
-      });
+        });
+      }
     }
 
     if (!isImpersonating) {
@@ -131,7 +136,8 @@ export async function processLinkCheck(ctx: Context) {
     const refCode = dbUser?.referral_code || '';
     const botUsername = ctx.me.username;
     const shareLink = `https://t.me/${botUsername}?start=${refCode}`;
-    const shareText = `I just checked this link with @${botUsername}!\n\nLink: ${url}\nResult: ${riskEmoji} ${result.risk_level} (${scorePercent}% Risk)\n\nCheck yours here: ${shareLink}`;
+    const coverageNote = result.scan_status === 'partial' ? ' (partial scan; one provider unavailable)' : '';
+    const shareText = `I just checked this link with @${botUsername}!\n\nLink: ${url}\nResult: ${riskEmoji} ${result.risk_level} (${scorePercent}% Risk)${coverageNote}\n\nCheck yours here: ${shareLink}`;
 
     const safeUrl = url.replace(/`/g, '%60');
 
@@ -141,7 +147,7 @@ URL: \`${safeUrl}\`
 Risk Level: *${result.risk_level}*
 Threat Probability: *${scorePercent}%*
 
-${result.cached ? '⚡ Cached result' : '🔄 Fresh analysis'}
+${result.scan_status === 'partial' ? '⚠️ *Partial analysis:* one scanning provider was unavailable. A detected threat is still shown, but this result is incomplete.' : (result.cached ? '⚡ Cached result' : '🔄 Fresh analysis')}
 
 ⚠️ *Never click suspicious links!*
 
