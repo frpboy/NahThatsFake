@@ -1,78 +1,23 @@
-1. **Analyze Performance Bottleneck**:
-The instructions state:
-> Performance & Architecture Convention: To prevent redundant database queries in Grammy global middleware (which execute on every message), combine data fetches into a single Supabase query and cache the results (e.g., user roles) in `(ctx as any).state`. Always explicitly initialize the state first via `(ctx as any).state = (ctx as any).state || {};` to prevent TypeErrors, pass the cached state into helper functions like `isAdmin(id, cachedRole)` to preserve encapsulation, and explicitly set fallback values (e.g., `userRole = 'user'`) when the database returns no data to prevent redundant queries for brand-new users.
+1. **Identify Performance Issue**: The `bot.on('message:photo')` and `bot.on('message:document')` handlers make a redundant database query to fetch the `consent_given` field for users sending images.
+   - Before: The middleware at the start of each request already queries the `users` table via `supabase.from('users').select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until')` and stores the resulting data in `(ctx as any).state.userRecord`.
+   - Then, when handling `message:photo` and `message:document`, the code runs `supabase.from('users').select('consent_given')` to check if consent has been given.
+   - We can just add `consent_given` to the initial middleware select query and avoid an entire database round trip when handling images.
 
-Currently, `isAdmin(user.id.toString())` makes a query, and then `.select('is_banned, banned_reason, banned_until, is_throttled, throttled_until')` makes another query. Also `isAdmin` and `isOwner` are called repeatedly on every command or handler, causing N+1 queries.
+2. **Modify `src/index.ts` to include `consent_given` in initial select query**:
+   - Change `select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until')` to `select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until, consent_given')`.
 
-2. **Modify `bot/src/utils/roles.ts`**:
-   - Change the functions to accept an optional `cachedRole`:
-     ```ts
-     export async function getRole(telegramId: string, cachedRole?: string): Promise<'owner' | 'admin' | 'user'> {
-       if (cachedRole) return cachedRole as 'owner' | 'admin' | 'user';
-       const { data } = await supabase
-         .from('users')
-         .select('role')
-         .eq('telegram_user_id', telegramId)
-         .maybeSingle();
+3. **Modify `bot.on('message:photo')` and `bot.on('message:document')`**:
+   - Remove the `supabase.from('users').select('consent_given')` redundant query.
+   - Use `const userRecord = (ctx as any).state.userRecord;` and `userRecord?.consent_given` instead.
 
-       return (data?.role as 'owner' | 'admin' | 'user') || 'user';
-     }
+4. **Verify changes & Type Check**:
+   - Run `pnpm run typecheck` inside `bot/`.
 
-     export async function isOwner(telegramId: string, cachedRole?: string): Promise<boolean> {
-       const role = await getRole(telegramId, cachedRole);
-       return role === 'owner';
-     }
+5. **Create Journal Entry**:
+   - Add a journal entry to `.jules/bolt.md` reflecting this performance improvement.
 
-     export async function isAdmin(telegramId: string, cachedRole?: string): Promise<boolean> {
-       const role = await getRole(telegramId, cachedRole);
-       return role === 'owner' || role === 'admin';
-     }
-     ```
+6. **Complete pre commit steps to ensure proper testing, verification, review, and reflection are done.**
 
-3. **Refactor `bot/src/index.ts` Global Middlewares**:
-   - Above the global ban check, insert a state initialization middleware that also combines data fetches.
-   ```ts
-   bot.use(async (ctx, next) => {
-     (ctx as any).state = (ctx as any).state || {};
-     const user = ctx.from;
-     if (!user) return next();
-
-     const { data } = await supabase
-       .from('users')
-       .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until')
-       .eq('telegram_user_id', user.id.toString())
-       .maybeSingle();
-
-     (ctx as any).state.role = data?.role || 'user';
-     (ctx as any).state.userRecord = data || null;
-
-     await next();
-   });
-   ```
-   - Update the Ban Check middleware to use the cached `userRecord` and `role`.
-   ```ts
-   bot.use(async (ctx, next) => {
-     const user = ctx.from;
-     if (!user) return next();
-
-     const cachedRole = (ctx as any).state?.role;
-     if (await isAdmin(user.id.toString(), cachedRole)) return next();
-
-     const data = (ctx as any).state?.userRecord;
-     // ... rest of Ban Check middleware logic, using `data` directly instead of querying Supabase.
-   ```
-   - Update `bot.use` impersonation middleware to use `cachedRole` for `isOwner`.
-   ```ts
-   bot.use(async (ctx, next) => {
-     // ...
-     const cachedRole = (ctx as any).state?.role;
-     if (await isOwner(fromTelegramUserId, cachedRole)) {
-       // ...
-   ```
-
-4. **Refactor command handlers in `bot/src/index.ts`**:
-   - Replace all instances of `isAdmin(ctx.from.id.toString())` with `isAdmin(ctx.from.id.toString(), (ctx as any).state?.role)` across the file.
-   - Replace all instances of `getRole(...)` with `getRole(..., (ctx as any).state?.role)` across the file.
-   - Specifically search and replace inside: `command('stats')`, `command('ban')`, `command('unban')`, `command('givecredits')`, `command('setplan')`, `command('broadcast')`, `command('health')`, `command('adminhelp')`, `on('message:text')` (broadcast logic), `on('callback_query')` (reply logic).
-
-5. **Testing**: Run `pnpm run typecheck` to verify no types are broken. Ensure the bot still compiles and logic works correctly. Run `node --check src/index.ts` equivalently.
+7. **Submit the PR**:
+   - PR Title: `⚡ Bolt: Combine user field queries to eliminate redundant DB calls on image upload`
+   - PR Description matching the Bolt prompt requirements.

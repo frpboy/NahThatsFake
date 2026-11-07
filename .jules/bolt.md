@@ -43,3 +43,6 @@
 
 **Learning:** When handlers start by fetching a user's entire database record, or when middleware pre-fetches it and saves to state (`(ctx as any).state.userRecord`), making subsequent standalone database queries within handlers (like `/refer`) to fetch specific fields like `referral_code` from the same user creates unnecessary network latency and DB load.
 **Action:** Include the needed field (like `referral_code`) in the middleware's initial `select()` list, and extract it directly from the pre-fetched `userRecord` object using optional chaining (e.g., `userRecord?.referral_code`) rather than running redundant database queries.
+## 2025-02-12 - Reusing Global Middleware Context State to Eliminate Redundant DB Queries
+**Learning:** Found multiple places in `bot/src/index.ts` where image handlers (`message:photo`, `message:document`) redundantly queried the `users` table for the `consent_given` field right after it could have been fetched by the initial `bot.use` global authentication/ban check middleware.
+**Action:** When details about a user are needed in command or text handlers, include them in the initial `select()` query of the global middleware and pull them directly from `(ctx as any).state.userRecord` rather than executing redundant database round-trip queries.
