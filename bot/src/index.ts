@@ -986,7 +986,7 @@ bot.command('refund', async (ctx) => {
 
   await logAdminAction(ctx.from.id.toString(), 'REFUND_PAYMENT', { paymentId, reason, revokeApplied }, undefined, payment.group_id || undefined);
 
-  await ctx.reply(`💸 *Refund Processed*\n\nPayment ID: \`${paymentId}\`\nPlan: *${payment.plan_id}*\nAccess revoked: *${revokeApplied ? 'YES' : 'NO (newer entitlement detected)'}*\n\nThis action is logged.`, { parse_mode: 'Markdown' });
+  await ctx.reply(`💸 *Refund Processed*\n\nPayment ID: \`${escapeMarkdown(paymentId)}\`\nPlan: *${escapeMarkdown(payment.plan_id)}*\nAccess revoked: *${revokeApplied ? 'YES' : 'NO (newer entitlement detected)'}*\n\nThis action is logged.`, { parse_mode: 'Markdown' });
 });
 
 bot.command('simulate_abuse', async (ctx) => {
@@ -1042,7 +1042,7 @@ bot.command('simulate_abuse', async (ctx) => {
   await logAdminAction(ctx.from.id.toString(), 'SIMULATE_ABUSE', { type, count }, targetTelegramUserId);
 
   const label = target.username ? `@${target.username}` : (target.first_name || 'User');
-  await ctx.reply(`🧪 *Abuse Simulation Complete*\n\nUser: *${escapeMarkdown(label)}*\nInjected: *${type} × ${count}*\n\nResult:\n• Throttled: *${after?.is_throttled ? 'YES' : 'NO'}*\n• Temp/Hard Ban: *${after?.is_banned ? 'YES' : 'NO'}*\n\n⚠️ Marked as SIMULATED\nThis action is logged.`, { parse_mode: 'Markdown' });
+  await ctx.reply(`🧪 *Abuse Simulation Complete*\n\nUser: *${escapeMarkdown(label)}*\nInjected: *${escapeMarkdown(type)} × ${count}*\n\nResult:\n• Throttled: *${after?.is_throttled ? 'YES' : 'NO'}*\n• Temp/Hard Ban: *${after?.is_banned ? 'YES' : 'NO'}*\n\n⚠️ Marked as SIMULATED\nThis action is logged.`, { parse_mode: 'Markdown' });
 });
 
 bot.command('simulate_abuse_reset', async (ctx) => {
@@ -1127,7 +1127,7 @@ bot.command('timeline', async (ctx) => {
   events.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
   const top = events.slice(0, 20);
   const label = target.username ? `@${target.username}` : (target.first_name || 'User');
-  const lines = top.map(e => `• ${new Date(e.ts).toLocaleDateString()} — ${e.text}`).join('\n');
+  const lines = top.map(e => `• ${new Date(e.ts).toLocaleDateString()} — ${escapeMarkdown(e.text)}`).join('\n');
 
   await ctx.reply(`📜 *User Timeline — ${escapeMarkdown(label)}*\n\n${lines}`, { parse_mode: 'Markdown' });
 });
@@ -1152,8 +1152,8 @@ bot.command('groupmap', async (ctx) => {
 
   const rows = data.map((g: any, i: number) => {
     const name = g.group_name ? ` | ${escapeMarkdown(g.group_name)}` : '';
-    const plan = String(g.plan || 'free').toUpperCase();
-    return `${i + 1}️⃣ ${g.telegram_group_id}${name} | ${g.high_risk_pct}% HIGH | ${g.abuse_flags} flags | ${plan}`;
+    const plan = escapeMarkdown(String(g.plan || 'free').toUpperCase());
+    return `${i + 1}️⃣ ${escapeMarkdown(String(g.telegram_group_id))}${name} | ${g.high_risk_pct}% HIGH | ${g.abuse_flags} flags | ${plan}`;
   }).join('\n');
 
   await ctx.reply(`🔥 *Group Heatmap*\n\n${rows}`, { parse_mode: 'Markdown' });
@@ -1204,8 +1204,8 @@ bot.command('flag', async (ctx) => {
     }
 
     const lines = data.map((f: any) => {
-      const target = f.scope === 'global' ? 'GLOBAL' : `${String(f.scope).toUpperCase()}:${f.scope_id}`;
-      return `• ${f.key} | ${target} | ${f.enabled ? 'ON' : 'OFF'}`;
+      const target = f.scope === 'global' ? 'GLOBAL' : `${escapeMarkdown(String(f.scope).toUpperCase())}:${escapeMarkdown(String(f.scope_id))}`;
+      return `• ${escapeMarkdown(f.key)} | ${target} | ${f.enabled ? 'ON' : 'OFF'}`;
     }).join('\n');
 
     await ctx.reply(`🚩 *Feature Flags*\n\n${lines}`, { parse_mode: 'Markdown' });

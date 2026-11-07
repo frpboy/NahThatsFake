@@ -53,3 +53,7 @@
 **Vulnerability:** User-controlled input (check details) was injected directly into the DOM using `innerHTML` without sanitization.
 **Learning:** Even static HTML strings assigned to `innerHTML` are flagged by linters and reviewers as security risks, as `innerHTML` is inherently unsafe and a potential vector for Cross-Site Scripting (XSS) if user input is accidentally interpolated later.
 **Prevention:** Avoid `innerHTML` entirely. Use `textContent`, `innerText` or safe DOM manipulation methods like `document.createElement` and `appendChild` to build UI components safely and securely, preventing future developers from accidentally introducing XSS vulnerabilities.
+## 2024-11-02 - [CRITICAL] Prevent Markdown Injection DoS in Admin Commands
+**Vulnerability:** The admin commands (`/timeline`, `/simulate_abuse`, `/groupmap`, `/flag`, `/refund`) interpolated user-controlled data and database records directly into Markdown messages without escaping characters. An attacker could intentionally or accidentally submit data containing unbalanced markdown characters (like backticks) which causes a `400 Bad Request` from the Telegram API, leading to failed message delivery and a localized DoS for admins.
+**Learning:** All user-controlled text or database fields that could be externally influenced must be sanitized before being formatted via `parse_mode: 'Markdown'` in Telegram API messages.
+**Prevention:** Always implement the `escapeMarkdown` utility to escape special characters before embedding user variables into Markdown message templates.
