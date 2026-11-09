@@ -134,7 +134,7 @@ bot.use(async (ctx, next) => {
   // Fetch role and ban/throttle status in one go to prevent N+1 queries
   const { data } = await supabase
     .from('users')
-    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until, consent_given, referral_code')
+    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until, consent_given, referral_code, daily_credits, permanent_credits, plan, premium_until')
     .eq('telegram_user_id', user.id.toString())
     .maybeSingle();
 
@@ -352,7 +352,12 @@ bot.command('credits', async (ctx) => {
   const user = ctx.from;
   if (!user) return;
 
-  const credits = await checkCredits(getActingTelegramUserId(ctx));
+  const actingTelegramUserId = getActingTelegramUserId(ctx);
+  const isImpersonating = Boolean((ctx as any).state?.isImpersonating);
+  const credits = await checkCredits(
+    actingTelegramUserId,
+    isImpersonating ? undefined : (ctx as any).state.userRecord
+  );
   
   await ctx.reply(`💳 *Your Credits*
 
@@ -1563,7 +1568,12 @@ bot.on('message:text', async (ctx) => {
     // Trigger /credits logic
     const user = ctx.from;
     if (user) {
-      const credits = await checkCredits(getActingTelegramUserId(ctx));
+      const actingTelegramUserId = getActingTelegramUserId(ctx);
+      const isImpersonating = Boolean((ctx as any).state?.isImpersonating);
+      const credits = await checkCredits(
+        actingTelegramUserId,
+        isImpersonating ? undefined : (ctx as any).state.userRecord
+      );
       await ctx.reply(`💳 *Your Credits*
 
 Daily remaining: ${credits.dailyRemaining}/3

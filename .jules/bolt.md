@@ -46,3 +46,6 @@
 ## 2025-02-12 - Reusing Global Middleware Context State to Eliminate Redundant DB Queries
 **Learning:** Found multiple places in `bot/src/index.ts` where image handlers (`message:photo`, `message:document`) redundantly queried the `users` table for the `consent_given` field right after it could have been fetched by the initial `bot.use` global authentication/ban check middleware.
 **Action:** When details about a user are needed in command or text handlers, include them in the initial `select()` query of the global middleware and pull them directly from `(ctx as any).state.userRecord` rather than executing redundant database round-trip queries.
+## 2025-02-12 - Reusing Global Middleware Context State to Eliminate Redundant DB Queries for Credits
+**Learning:** Command handlers and utility functions (like `checkCredits`) redundantly queried the `users` table for `daily_credits`, `permanent_credits`, `plan`, and `premium_until` when this data could be pre-fetched by the global middleware.
+**Action:** Include these fields in the initial `select()` query of the global middleware and pass `(ctx as any).state.userRecord` into utility functions like `checkCredits` to prevent redundant database queries.
