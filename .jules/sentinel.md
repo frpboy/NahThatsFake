@@ -57,3 +57,7 @@
 **Vulnerability:** The admin commands (`/timeline`, `/simulate_abuse`, `/groupmap`, `/flag`, `/refund`) interpolated user-controlled data and database records directly into Markdown messages without escaping characters. An attacker could intentionally or accidentally submit data containing unbalanced markdown characters (like backticks) which causes a `400 Bad Request` from the Telegram API, leading to failed message delivery and a localized DoS for admins.
 **Learning:** All user-controlled text or database fields that could be externally influenced must be sanitized before being formatted via `parse_mode: 'Markdown'` in Telegram API messages.
 **Prevention:** Always implement the `escapeMarkdown` utility to escape special characters before embedding user variables into Markdown message templates.
+## 2024-05-24 - Missing Security Headers in TMA Server
+**Vulnerability:** The Express application lacked essential HTTP security headers like X-Content-Type-Options, X-Frame-Options, Strict-Transport-Security, and Content-Security-Policy.
+**Learning:** Even simple API proxies and static file servers need security headers to prevent clickjacking, MIME-sniffing, and XSS attacks.
+**Prevention:** Always use Helmet or manually configure fundamental security headers as part of standard Express middleware setup.
