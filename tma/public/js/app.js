@@ -420,9 +420,15 @@ function renderChecks() {
         resultDiv.appendChild(badgeDiv);
         resultDiv.appendChild(scoreDiv);
 
+        const chevronDiv = document.createElement('div');
+        chevronDiv.setAttribute('aria-hidden', 'true');
+        chevronDiv.setAttribute('style', 'color: var(--tg-theme-hint-color); margin-left: 12px; font-size: 20px; display: flex; align-items: center; opacity: 0.5;');
+        chevronDiv.innerHTML = '&rsaquo;';
+
         item.appendChild(iconDiv);
         item.appendChild(detailsDiv);
         item.appendChild(resultDiv);
+        item.appendChild(chevronDiv);
 
         container.appendChild(item);
     });
