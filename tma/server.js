@@ -20,6 +20,15 @@ const PORT = process.env.PORT || 3000;
 
 app.disable('x-powered-by');
 
+// Security Headers Middleware
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Content-Security-Policy', "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval';");
+  next();
+});
+
 // Middleware
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://nahthatsfake.vercel.app').split(',');
 app.use(cors({
