@@ -208,14 +208,11 @@ async function checkVirusTotal(url: string): Promise<{
             }
         );
         
-        const stats = reportResponse.data.data.attributes.last_analysis_stats;
-        return {
-            malicious: stats.malicious || 0,
-            suspicious: stats.suspicious || 0,
-            harmless: stats.harmless || 0,
-            undetected: stats.undetected || 0
-        };
+        return parseVirusTotalStats(reportResponse.data?.data?.attributes?.last_analysis_stats);
     } catch (e) {
+        // A throttled, unauthorized or failed lookup is not a missing report.
+        // Submit only when the provider explicitly says the URL was not found.
+        if (!axios.isAxiosError(e) || e.response?.status !== 404) throw e;
         // If not found, submit it
         const submitResponse = await axios.post(
           'https://www.virustotal.com/api/v3/urls',
@@ -245,14 +242,11 @@ async function checkVirusTotal(url: string): Promise<{
           }
         );
 
-        const stats = analysisResponse.data.data.attributes.stats;
-        
-        return {
-          malicious: stats.malicious || 0,
-          suspicious: stats.suspicious || 0,
-          harmless: stats.harmless || 0,
-          undetected: stats.undetected || 0
-        };
+        const analysis = analysisResponse.data?.data?.attributes;
+        if (analysis?.status !== 'completed') {
+          throw new Error('VirusTotal analysis is not complete');
+        }
+        return parseVirusTotalStats(analysis.stats);
     }
 
   } catch (error) {
@@ -260,4 +254,19 @@ async function checkVirusTotal(url: string): Promise<{
     console.error('VirusTotal provider unavailable', axios.isAxiosError(error) ? (error.response?.status ?? error.code ?? 'request-failed') : 'unknown-error');
     throw new Error('VirusTotal provider request failed');
   }
+}
+
+/** Do not convert missing, malformed or empty provider evidence into a clean scan. */
+function parseVirusTotalStats(stats: unknown): VirusTotalResult {
+  if (!stats || typeof stats !== 'object') throw new Error('VirusTotal statistics are missing');
+  const values = stats as Record<string, unknown>;
+  const names = ['malicious', 'suspicious', 'harmless', 'undetected'] as const;
+  for (const name of names) {
+    if (typeof values[name] !== 'number' || !Number.isSafeInteger(values[name]) || (values[name] as number) < 0) {
+      throw new Error('VirusTotal statistics are invalid');
+    }
+  }
+  const result = values as unknown as VirusTotalResult;
+  if (names.every(name => result[name] === 0)) throw new Error('VirusTotal has no completed verdicts');
+  return { malicious: result.malicious, suspicious: result.suspicious, harmless: result.harmless, undetected: result.undetected };
 }
