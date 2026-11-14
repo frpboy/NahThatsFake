@@ -20,7 +20,7 @@
     "detection"
   ],
   "author": "Nah That's Fake Team",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",
     "@types/node-cron": "^3.0.11",
