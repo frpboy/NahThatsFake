@@ -22,4 +22,5 @@ RUN npm prune --production
 RUN addgroup -S nodejs && adduser -S bot -G nodejs
 USER bot
 
+ENV NODE_ENV=production
 CMD ["npm", "start"]
