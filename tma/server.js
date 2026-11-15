@@ -1,3 +1,5 @@
+const { initReporting, reportError } = require('./monitoring');
+initReporting();
 
 const express = require('express');
 const cors = require('cors');
@@ -214,6 +216,7 @@ app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
       }
     });
   } catch (error) {
+    await reportError('api.stats');
     console.error('Stats error:', error);
     res.status(500).json({ error: 'Failed to fetch stats' });
   }
@@ -242,6 +245,7 @@ app.get('/api/user/profile', validateTelegramData, async (req, res) => {
 
     res.json({ ...user, total_checks: checkCount });
   } catch (error) {
+    await reportError('api.profile');
     console.error('Profile error:', error);
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
@@ -266,6 +270,7 @@ app.get('/api/user/role', validateTelegramData, async (req, res) => {
   
       res.json({ role: user?.role || 'user' });
     } catch (error) {
+      await reportError('api.role');
       console.error('Role error:', error);
       res.status(500).json({ error: 'Failed to fetch role' });
     }
@@ -296,6 +301,7 @@ app.get('/api/user/checks', validateTelegramData, async (req, res) => {
 
       res.json({ checks: user.checks || [] });
     } catch (error) {
+      await reportError('api.checks');
       console.error('Checks error:', error);
       res.status(500).json({ error: 'Failed to fetch checks' });
     }
@@ -350,6 +356,7 @@ app.post('/api/payment/create-razorpay-order', validateTelegramData, async (req,
     });
     
   } catch (error) {
+    await reportError('api.order');
     console.error('Razorpay create order error:', error);
     res.status(500).json({ error: 'Failed to create order' });
   }
@@ -423,6 +430,7 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
 
       res.json({ success: true });
     } catch (error) {
+      await reportError('api.payment-update');
       console.error('DB Update Error:', error);
       res.status(500).json({ error: 'Database update failed' });
     }
@@ -481,10 +489,12 @@ app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, 
     if (data.ok) {
       res.json({ invoiceLink: data.result });
     } else {
+      await reportError('api.invoice');
       console.error('Telegram API Error:', data);
       res.status(500).json({ error: 'Failed to create invoice link' });
     }
   } catch (error) {
+    await reportError('api.invoice');
     console.error('Create Invoice Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -557,6 +567,7 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
         }
       }
     } catch (err) {
+      await reportError('api.webhook');
       console.error('Webhook processing error:', err);
       // Return 200 anyway to prevent Razorpay from retrying indefinitely on logic errors
     }
@@ -565,6 +576,12 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
   } else {
     res.status(400).send('Invalid signature');
   }
+});
+
+// Last Express boundary, without forwarding request/error objects to reporting.
+app.use(async (error, req, res, next) => {
+  await reportError('api.unhandled');
+  next(error);
 });
 
 // Start server
