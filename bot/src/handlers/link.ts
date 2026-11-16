@@ -3,6 +3,8 @@ import { Context } from 'grammy';
 import { supabase } from '../supabase';
 import { checkCredits, consumeCredit } from '../utils/credits';
 import { checkUrlSafety } from '../services/urlscanner';
+import { AmbiguousOperationError, ClaimLostError, getNtf, throwIfAborted } from '../errors';
+import { markReplyPhase } from '../phases';
 import { getOrCreateUserByTelegram, getUserByTelegramId } from '../utils/user';
 import { config } from '../config';
 import crypto from 'crypto';
@@ -10,6 +12,10 @@ import crypto from 'crypto';
 export async function processLinkCheck(ctx: Context) {
   const user = ctx.from;
   if (!user) return;
+
+  // Webhook delivery context (undefined in long-poll mode: behavior unchanged).
+  const ntf = getNtf(ctx.update);
+  const updateId = ctx.update?.update_id;
 
   const actingTelegramUserId = (ctx as any).state?.actingTelegramUserId || user.id.toString();
   const isImpersonating = Boolean((ctx as any).state?.isImpersonating);
@@ -72,7 +78,8 @@ export async function processLinkCheck(ctx: Context) {
     // Version the cache key so legacy results created by fail-open provider handling are not reused.
     const urlHash = crypto.createHash('sha256').update(`urlscanner-v2:${normalizedUrl}`).digest('hex');
 
-    // Check cache first
+    // Check cache first. A live 'pending' marker means a previous attempt may
+    // still be scanning (or crashed mid-scan): do not start a second scan.
     const { data: cached } = await supabase
       .from('check_cache')
       .select('*')
@@ -81,8 +88,12 @@ export async function processLinkCheck(ctx: Context) {
       .gt('expires_at', new Date().toISOString())
       .single();
 
+    if (ntf && cached?.scan_status === 'pending') {
+      throw new AmbiguousOperationError('previous link scan may still be in flight; not starting another');
+    }
+
     let result;
-    if (cached) {
+    if (cached && cached.scan_status !== 'pending') {
       result = {
         score: cached.score,
         risk_level: cached.risk_level,
@@ -91,9 +102,42 @@ export async function processLinkCheck(ctx: Context) {
         api_source: cached.api_source
       };
     } else {
+      if (ntf) {
+        throwIfAborted(ntf);
+        // Record the scan phase BEFORE calling providers (same pending-marker
+        // contract as image scans; 10-minute pending expiry).
+        const pendingExpiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+        const { error: pendingError } = await supabase.from('check_cache').insert({
+          check_type: 'link',
+          content_hash: urlHash,
+          score: 0,
+          risk_level: 'LOW',
+          scan_status: 'pending',
+          expires_at: pendingExpiry
+        });
+        if (pendingError) {
+          if ((pendingError as { code?: string }).code === '23505') {
+            throw new AmbiguousOperationError('concurrent or uncertain link scan owns the pending marker; not starting another');
+          }
+          console.error('Link pending-scan claim error:', pendingError);
+          throw new AmbiguousOperationError('could not record scan phase; not starting scan');
+        }
+      }
+      throwIfAborted(ntf);
       // Call multiple APIs for link checking
-      const apiResult = await checkUrlSafety(url);
-      
+      let apiResult;
+      try {
+        apiResult = await checkUrlSafety(url);
+      } catch (scanError) {
+        // Unexpected throw: provider outcomes unknown; the pending marker
+        // stays so a later delivery stops instead of starting a second scan.
+        if (ntf) {
+          throw new AmbiguousOperationError(`link scan outcome uncertain: ${(scanError as Error).message}`);
+        }
+        throw scanError;
+      }
+      throwIfAborted(ntf);
+
       result = {
         score: apiResult.score,
         risk_level: apiResult.risk_level,
@@ -101,17 +145,40 @@ export async function processLinkCheck(ctx: Context) {
         cached: false,
         api_source: apiResult.sources.join(', ') || 'unknown'
       };
-      
-      // Only cache complete two-provider scans; partial detections are ephemeral.
-      if (apiResult.scan_status === 'complete') {
-        await supabase.from('check_cache').insert({
-        check_type: 'link',
-        content_hash: urlHash,
-        score: result.score,
-        risk_level: result.risk_level,
-        api_source: result.api_source,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
-        });
+
+      if (ntf) {
+        if (apiResult.scan_status === 'complete') {
+          // Flip the pending marker to a completed 7-day cache entry.
+          await supabase.from('check_cache').upsert({
+            check_type: 'link',
+            content_hash: urlHash,
+            score: result.score,
+            risk_level: result.risk_level,
+            api_source: result.api_source,
+            scan_status: 'complete',
+            expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
+          }, { onConflict: 'check_type,content_hash' });
+        } else {
+          // Definitive incomplete result (providers answered/failed): release
+          // the pending marker so a later retry is safe.
+          await supabase.from('check_cache').delete()
+            .eq('check_type', 'link')
+            .eq('content_hash', urlHash)
+            .eq('scan_status', 'pending');
+        }
+      } else {
+        // Long-poll mode: only cache complete two-provider scans; partial
+        // detections are ephemeral.
+        if (apiResult.scan_status === 'complete') {
+          await supabase.from('check_cache').insert({
+          check_type: 'link',
+          content_hash: urlHash,
+          score: result.score,
+          risk_level: result.risk_level,
+          api_source: result.api_source,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
+          });
+        }
       }
     }
 
@@ -141,6 +208,12 @@ export async function processLinkCheck(ctx: Context) {
 
     const safeUrl = url.replace(/`/g, '%60');
 
+    // Record the reply phase before the irreversible send; a later delivery
+    // seeing 'replying' stops as ambiguous instead of risking a duplicate.
+    throwIfAborted(ntf);
+    if (ntf && updateId !== undefined) {
+      await markReplyPhase(supabase, updateId, ntf, 'replying');
+    }
     await ctx.reply(`${riskEmoji} *Link Check Result*
 
 URL: \`${safeUrl}\`
@@ -159,9 +232,25 @@ Need a detailed report? Open the full app for more insights.`, {
           [{ text: '📢 Share Result & Earn Credits', url: `https://t.me/share/url?url=${encodeURIComponent(shareLink)}&text=${encodeURIComponent(shareText)}` }]
         ]
       }
-    });
+    }, ntf?.signal as never);
+    if (ntf && updateId !== undefined) {
+      await markReplyPhase(supabase, updateId, ntf, 'replied');
+    }
 
   } catch (error) {
+    if (error instanceof AmbiguousOperationError) {
+      // Stop-on-ambiguity: tell the user once, do not auto-retry an uncertain scan.
+      console.error('Link check stopped as ambiguous:', error.message);
+      try {
+        await ctx.reply('⚠️ That check was interrupted and I cannot safely confirm whether the scan completed. It will not retry automatically - please send the link again in a few minutes.');
+      } catch (noticeError) {
+        console.error('Could not send ambiguity notice:', noticeError);
+      }
+      throw error;
+    }
+    if (error instanceof ClaimLostError) {
+      throw error;
+    }
     console.error('Link check error:', error);
     await ctx.reply('❌ Sorry, I couldn\'t check that link. Please try again.');
   }
