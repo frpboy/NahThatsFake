@@ -567,6 +567,18 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
   }
 });
 
+// Telegram Bot webhook (serverless bot). Requires bot/dist (npm run build:bot at root).
+// Dedupe + secret validation live in bot/src/webhook.ts.
+app.post('/api/telegram', async (req, res) => {
+  try {
+    const { telegramWebhookHandler } = require('../bot/dist/webhook.js');
+    await telegramWebhookHandler(req, res);
+  } catch (e) {
+    console.error('[telegram-webhook] unhandled error:', e);
+    if (!res.headersSent) res.status(500).end();
+  }
+});
+
 // Start server
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {

@@ -1,4 +1,3 @@
-
 {
   "version": 2,
   "rewrites": [
@@ -10,5 +9,6 @@
       "source": "/(.*)",
       "destination": "/tma/public/index.html"
     }
-  ]
+  ],
+  "buildCommand": "npm run build:bot"
 }
