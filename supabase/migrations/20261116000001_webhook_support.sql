@@ -1,8 +1,16 @@
 -- Webhook support: Telegram update work-state with per-effect phases,
 -- identity-bound idempotent credit charging with outcome recording, and
--- DB-backed elapsed-window rate limiting with update-deduped counting.
+-- DB-backed elapsed-window rate limiting with per-update decision replay.
 -- See bot/src/webhook.ts, bot/src/phases.ts, bot/src/utils/credits.ts,
 -- bot/src/middleware/rateLimit.ts.
+--
+-- Rehearsal/upgrade contract: this file is SELF-HEALING across earlier PR451
+-- revisions of itself (drop/re-add constraints, drop superseded table shapes
+-- and function overloads), because CREATE TABLE IF NOT EXISTS never evolves
+-- an existing table. It has NOT been applied to production (no migration
+-- apply was ever authorized or executed); the deployment checklist must
+-- verify that condition explicitly (pg_migrations / schema introspection)
+-- before applying.
 
 -- 1. processed_updates: durable work-state for Telegram webhook deliveries.
 --    Telegram retries a delivery until it gets a non-5xx response (up to ~24h).
@@ -16,7 +24,7 @@
 --    marker was missing.
 CREATE TABLE IF NOT EXISTS public.processed_updates (
   update_id BIGINT PRIMARY KEY,
-  status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'done', 'failed', 'ambiguous')),
+  status TEXT NOT NULL DEFAULT 'processing',
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   finished_at TIMESTAMPTZ,
   -- Fencing token: only the current claim owner may transition status, so a
@@ -24,6 +32,15 @@ CREATE TABLE IF NOT EXISTS public.processed_updates (
   claim_token UUID,
   reply_phase TEXT CHECK (reply_phase IN ('replying', 'replied'))
 );
+
+-- Evolve earlier revisions that lacked 'ambiguous' / reply_phase.
+ALTER TABLE public.processed_updates
+  ADD COLUMN IF NOT EXISTS reply_phase TEXT CHECK (reply_phase IN ('replying', 'replied'));
+ALTER TABLE public.processed_updates
+  DROP CONSTRAINT IF EXISTS processed_updates_status_check;
+ALTER TABLE public.processed_updates
+  ADD CONSTRAINT processed_updates_status_check
+  CHECK (status IN ('processing', 'done', 'failed', 'ambiguous'));
 
 CREATE INDEX IF NOT EXISTS processed_updates_received_at_idx
   ON public.processed_updates (started_at);
@@ -40,9 +57,16 @@ ALTER TABLE public.processed_updates ENABLE ROW LEVEL SECURITY;
 CREATE TABLE IF NOT EXISTS public.credit_charges (
   update_id BIGINT PRIMARY KEY,
   telegram_user_id TEXT NOT NULL,
-  credit_type TEXT NOT NULL CHECK (credit_type IN ('daily', 'permanent', 'premium', 'owner')),
+  credit_type TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Evolve earlier revisions whose CHECK excluded zero-cost outcomes.
+ALTER TABLE public.credit_charges
+  DROP CONSTRAINT IF EXISTS credit_charges_credit_type_check;
+ALTER TABLE public.credit_charges
+  ADD CONSTRAINT credit_charges_credit_type_check
+  CHECK (credit_type IN ('daily', 'permanent', 'premium', 'owner'));
 
 ALTER TABLE public.credit_charges ENABLE ROW LEVEL SECURITY;
 
@@ -132,9 +156,18 @@ $$;
 -- 5. Rate limiting: DB-backed ELAPSED window (semantics preserved from the
 --    long-poll in-memory Map: the window starts at the user's first hit and
 --    resets 60s after that, it is NOT aligned to clock minutes), shared
---    across serverless instances, with per-update dedupe so a retried
---    delivery is counted once.
-CREATE TABLE IF NOT EXISTS public.rate_limit_windows (
+--    across serverless instances. Every counted update records its DECISION
+--    (the count it was assigned, its window and its user); a retried delivery
+--    replays that recorded decision exactly - never the user's current window
+--    count, which may have moved on (admitted work must stay admitted on
+--    retry, dropped work must stay dropped). The record is identity-bound: a
+--    recorded decision for a different user raises instead of answering.
+--    Earlier revisions used a per-minute composite-PK table: it is dropped
+--    here (rate windows are ephemeral; the only casualty is in-flight
+--    counters, which reset) because CREATE TABLE IF NOT EXISTS cannot evolve
+--    it.
+DROP TABLE IF EXISTS public.rate_limit_windows;
+CREATE TABLE public.rate_limit_windows (
   user_id TEXT PRIMARY KEY,
   window_start TIMESTAMPTZ NOT NULL,
   hit_count INTEGER NOT NULL DEFAULT 0
@@ -145,11 +178,20 @@ ALTER TABLE public.rate_limit_windows ENABLE ROW LEVEL SECURITY;
 CREATE TABLE IF NOT EXISTS public.rate_limit_hits (
   update_id BIGINT PRIMARY KEY,
   user_id TEXT NOT NULL,
+  hit_count INTEGER NOT NULL,
+  window_start TIMESTAMPTZ NOT NULL,
   counted_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Evolve earlier revisions that lacked the decision columns.
+ALTER TABLE public.rate_limit_hits ADD COLUMN IF NOT EXISTS hit_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.rate_limit_hits ADD COLUMN IF NOT EXISTS window_start TIMESTAMPTZ NOT NULL DEFAULT now();
+
 ALTER TABLE public.rate_limit_hits ENABLE ROW LEVEL SECURITY;
 -- rate_limit_hits rows older than 24h can be pruned safely.
+
+-- Remove the superseded single-argument overload from earlier revisions.
+DROP FUNCTION IF EXISTS rate_limit_hit(TEXT);
 
 CREATE OR REPLACE FUNCTION rate_limit_hit(p_telegram_user_id TEXT, p_update_id BIGINT DEFAULT NULL)
 RETURNS INTEGER
@@ -160,19 +202,22 @@ AS $$
 DECLARE
   v_count INTEGER;
   v_start TIMESTAMPTZ;
+  v_recorded_user TEXT;
 BEGIN
-  -- Serialize same-update calls first so concurrent deliveries cannot both
-  -- pass the dedupe check below.
   IF p_update_id IS NOT NULL THEN
+    -- Serialize same-update calls so concurrent deliveries cannot both pass
+    -- the replay check below.
     PERFORM pg_advisory_xact_lock(p_update_id);
-  END IF;
 
-  -- Dedupe: a retried delivery of the same update returns its recorded count
-  -- without consuming another hit.
-  IF p_update_id IS NOT NULL THEN
-    IF EXISTS (SELECT 1 FROM rate_limit_hits WHERE update_id = p_update_id) THEN
-      SELECT hit_count INTO v_count FROM rate_limit_windows WHERE user_id = p_telegram_user_id;
-      RETURN COALESCE(v_count, 1);
+    -- Decision replay: return the exact count this update was assigned, and
+    -- only to the user it was recorded for.
+    SELECT user_id, hit_count INTO v_recorded_user, v_count
+      FROM rate_limit_hits WHERE update_id = p_update_id;
+    IF FOUND THEN
+      IF v_recorded_user <> p_telegram_user_id THEN
+        RAISE EXCEPTION 'rate_limit_hits identity conflict: update_id % recorded for a different user', p_update_id;
+      END IF;
+      RETURN v_count;
     END IF;
   END IF;
 
@@ -184,15 +229,17 @@ BEGIN
     FROM rate_limit_windows WHERE user_id = p_telegram_user_id FOR UPDATE;
 
   IF now() - v_start >= interval '60 seconds' THEN
-    UPDATE rate_limit_windows SET window_start = now(), hit_count = 1 WHERE user_id = p_telegram_user_id;
+    v_start := now();
     v_count := 1;
+    UPDATE rate_limit_windows SET window_start = v_start, hit_count = 1 WHERE user_id = p_telegram_user_id;
   ELSE
-    UPDATE rate_limit_windows SET hit_count = hit_count + 1 WHERE user_id = p_telegram_user_id;
     v_count := v_count + 1;
+    UPDATE rate_limit_windows SET hit_count = v_count WHERE user_id = p_telegram_user_id;
   END IF;
 
   IF p_update_id IS NOT NULL THEN
-    INSERT INTO rate_limit_hits (update_id, user_id) VALUES (p_update_id, p_telegram_user_id);
+    INSERT INTO rate_limit_hits (update_id, user_id, hit_count, window_start)
+    VALUES (p_update_id, p_telegram_user_id, v_count, v_start);
   END IF;
 
   RETURN v_count;
