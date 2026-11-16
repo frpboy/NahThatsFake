@@ -487,7 +487,7 @@ bot.command('premium', async (ctx) => {
 
 Purchases are no longer available. New premium plans and credit packs can't be bought anymore.
 
-If you already paid, your access and credits stay active until they expire.`, {
+If you already paid, your premium stays active until its end date, and your purchased credits remain available.`, {
     parse_mode: 'Markdown'
   });
 });
@@ -1571,7 +1571,7 @@ Use /refer to earn more credits!`, { parse_mode: 'Markdown' });
 
 Purchases are no longer available. New premium plans and credit packs can't be bought anymore.
 
-If you already paid, your access and credits stay active until they expire.`, {
+If you already paid, your premium stays active until its end date, and your purchased credits remain available.`, {
     parse_mode: 'Markdown'
   });
     return;

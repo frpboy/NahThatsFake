@@ -487,7 +487,7 @@ function shareReferral() {
 // Premium info (purchases removed 2026-11-16)
 function upgradePremium() {
     hapticFeedback('light');
-    tg.showAlert('Purchases are no longer available. If you already paid, your access and credits stay active until they expire.');
+    tg.showAlert('Purchases are no longer available. If you have already paid, your premium stays active until its current end date, and your purchased credits remain available.');
 }
 
 // Open bot
