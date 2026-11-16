@@ -70,7 +70,7 @@ export async function processImageCheck(ctx: Context) {
     const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
     // Download image
-    const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+    const response = await axios.get(fileUrl, { responseType: 'arraybuffer', timeout: 15000 });
     const imageBuffer = Buffer.from(response.data, 'binary');
 
     // Generate hash for caching

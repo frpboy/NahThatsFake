@@ -30,19 +30,22 @@ function fakeDb(initial?: Map<number, { status: string; started_at: string }>) {
         },
         update(patch: any) {
           const filters: Record<string, any> = {};
+          const applyUpdate = () => {
+            const id = filters['update_id'];
+            // optimistic-claim guard: row must still match all filters
+            const cur = rows.get(id);
+            const matches = cur && Object.entries(filters).every(([k, v]) => (cur as any)[k] === v || k === 'update_id');
+            if (matches) {
+              calls.statusUpdates.push({ id, ...patch });
+              rows.set(id, { ...cur, ...patch });
+              return [{ update_id: id, ...rows.get(id) }];
+            }
+            return [];
+          };
           const q: any = {
             eq(col: string, val: any) { filters[col] = val; return q; },
-            then(resolve: any) {
-              const id = filters['update_id'];
-              // optimistic-claim guard: row must still match all filters
-              const cur = rows.get(id);
-              const matches = cur && Object.entries(filters).every(([k, v]) => (cur as any)[k] === v || k === 'update_id');
-              if (matches) {
-                calls.statusUpdates.push({ id, ...patch });
-                rows.set(id, { ...cur, ...patch });
-              }
-              resolve({ error: null });
-            }
+            select(_cols: string) { const data = applyUpdate(); return Promise.resolve({ data, error: null }); },
+            then(resolve: any) { applyUpdate(); resolve({ error: null }); }
           };
           return q;
         },
@@ -134,13 +137,43 @@ async function main() {
     assert.equal(r.statusCode, 200);
     assert.deepEqual(bot.calls, []);
   }
-  // 6. Duplicate while processing is fresh -> 200, no takeover
+  // 6. Duplicate while processing is fresh -> 500 (Telegram retries later; a
+  //    200 here could lose the update forever if the in-flight worker dies)
   {
     const db = fakeDb(new Map([[7, { status: 'processing', started_at: new Date().toISOString() }]]));
     const bot = fakeBot();
     const h = createTelegramWebhookHandler({ bot, supabase: db, secretToken: SECRET });
     const r = fakeRes();
     await h({ headers: auth, body: { update_id: 7 } }, r);
+    assert.equal(r.statusCode, 500);
+    assert.deepEqual(bot.calls, []);
+  }
+  // 6b. Takeover claim loses the race (row changed between read and claim) ->
+  //     200 ack (the winner's delivery governs), no double processing
+  {
+    // pre-seed as failed; the fake applies the guarded update only when the
+    // row still matches, so simulate the race by pre-winning the claim
+    const db = fakeDb(new Map([[12, { status: 'processing', started_at: new Date().toISOString() }]]));
+    // force the read to observe a 'failed' row while the claim will see 'processing'
+    const origSelect = db.from('processed_updates').select;
+    let readOnce = false;
+    const wrappedFrom = db.from.bind(db);
+    db.from = (table: string) => {
+      const q: any = wrappedFrom(table);
+      const sel = q.select;
+      q.select = (cols: string) => ({
+        eq: (_c: string, _id: number) => ({
+          single: async () => readOnce
+            ? { data: null, error: { code: 'x' } }
+            : (readOnce = true, { data: { update_id: 12, status: 'failed', started_at: new Date().toISOString() }, error: null })
+        })
+      });
+      return q;
+    };
+    const bot = fakeBot();
+    const h = createTelegramWebhookHandler({ bot, supabase: db, secretToken: SECRET, takeoverAfterMs: 0 });
+    const r = fakeRes();
+    await h({ headers: auth, body: { update_id: 12 } }, r);
     assert.equal(r.statusCode, 200);
     assert.deepEqual(bot.calls, []);
   }

@@ -119,22 +119,34 @@ export function createTelegramWebhookHandler(deps: WebhookDeps) {
 
     const stale = Date.now() - new Date(row.started_at).getTime() > takeoverAfterMs;
     if (row.status === 'processing' && !stale) {
-      // Another invocation is actively handling this update.
-      res.status(200).end();
+      // Another invocation is actively handling this update. Do NOT ack: if
+      // that worker dies after we ack, Telegram would have no failed delivery
+      // to retry and the update would be lost. A 500 makes Telegram retry;
+      // the retry then sees 'done' (no reprocessing) or takes over the stale
+      // claim.
+      res.status(500).end();
       return;
     }
 
-    // 'failed' (Telegram retry) or stale 'processing' (crashed invocation): take over.
-    const { error: claimError } = await supabase
+    // 'failed' (Telegram retry) or stale 'processing' (crashed invocation):
+    // claim by matching the exact observed state. If a concurrent claimant
+    // won first, 0 rows match - that is a lost race, not an error; the
+    // winner's delivery governs, so ack and skip.
+    const { data: claimed, error: claimError } = await supabase
       .from('processed_updates')
       .update({ status: 'processing', started_at: new Date().toISOString() })
       .eq('update_id', updateId)
       .eq('status', row.status)
-      .eq('started_at', row.started_at);
+      .eq('started_at', row.started_at)
+      .select('update_id');
 
     if (claimError) {
       console.error('[webhook] failed to claim update for reprocessing:', claimError);
       res.status(500).end();
+      return;
+    }
+    if (!claimed || claimed.length === 0) {
+      res.status(200).end();
       return;
     }
 

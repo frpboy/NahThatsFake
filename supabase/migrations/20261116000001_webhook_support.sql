@@ -64,6 +64,14 @@ BEGIN
     RETURN NULL;
   END IF;
 
+  -- Recheck the ledger while holding the user row lock: concurrent deliveries
+  -- of the same update serialize on this lock, and the loser must see the
+  -- winner's recorded charge instead of debiting again.
+  SELECT credit_type INTO v_type FROM credit_charges WHERE update_id = p_update_id;
+  IF FOUND THEN
+    RETURN v_type;
+  END IF;
+
   IF v_user.role = 'owner' THEN
     RETURN 'owner';
   END IF;
@@ -135,3 +143,12 @@ BEGIN
   RETURN v_count;
 END;
 $$;
+
+-- Privilege hardening: SECURITY DEFINER functions are executable by PUBLIC by
+-- default, which would let anon/authenticated keys call them directly and
+-- bypass the table-level RLS intent. Restrict execution to the service role.
+REVOKE ALL ON FUNCTION consume_credit_atomic(TEXT, BIGINT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION consume_credit_atomic(TEXT, BIGINT) TO service_role;
+
+REVOKE ALL ON FUNCTION rate_limit_hit(TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION rate_limit_hit(TEXT) TO service_role;
