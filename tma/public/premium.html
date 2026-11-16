@@ -7,27 +7,32 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        body {
-            font-family: 'Playfair Display', serif;
-            background: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #000000);
-            padding: 20px;
-            text-align: center;
-        }
-        .container { max-width: 400px; margin: 0 auto; }
-        h1 { margin-bottom: 10px; }
-        p { opacity: 0.8; margin-bottom: 20px; }
-    </style>
+    <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1><span aria-hidden="true">⭐</span> Premium</h1>
-            <p>Purchases are no longer available.</p>
-            <p>New premium plans and credit packs can't be bought anymore. If you already paid, your access and credits stay active until they expire.</p>
+        <header class="header">
+            <h1 class="logo"><span aria-hidden="true">🔍</span> Nah That's Fake</h1>
+            <div class="subtitle">Premium</div>
         </header>
+
+        <div class="card" style="text-align: center;">
+            <p style="font-size: 40px; margin: 10px 0;" aria-hidden="true">⭐</p>
+            <p><strong>Purchases are no longer available.</strong></p>
+            <p>New premium plans and credit packs can't be bought anymore.</p>
+            <p style="opacity: 0.8;">If you've already paid, your premium stays active until its current end date, and your purchased credits remain available.</p>
+        </div>
     </div>
+
+    <script>
+        // Apply Telegram theme (same behaviour as the main app)
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.ready();
+            tg.expand();
+            if (tg.colorScheme === 'dark') document.body.classList.add('dark');
+        }
+    </script>
 </body>
 </html>
