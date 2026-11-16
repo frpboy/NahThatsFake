@@ -483,22 +483,12 @@ bot.command('history', async (ctx) => {
 
 // Command: /premium
 bot.command('premium', async (ctx) => {
-  await ctx.reply(`⭐ *Go Premium*
+  await ctx.reply(`⭐ *Premium*
 
-Unlock unlimited checks and advanced features:
+Purchases are no longer available. New premium plans and credit packs can't be bought anymore.
 
-💎 Individual Weekly: ₹29 / 150 ⭐
-💎 Individual Monthly: ₹99 / 500 ⭐
-💎 Individual Annual: ₹799 (33% off)
-💎 Group Monthly: ₹299
-
-Pay with UPI, cards, or Telegram Stars!`, {
-    parse_mode: 'Markdown',
-    reply_markup: {
-      inline_keyboard: [[
-        { text: 'Upgrade Now', web_app: { url: `${config.TMA_URL}/premium.html` } }
-      ]]
-    }
+If you already paid, your access and credits stay active until they expire.`, {
+    parse_mode: 'Markdown'
   });
 });
 
@@ -1366,7 +1356,7 @@ Commands:
 /earn – Sponsored message 
 /refer – Earn free credits 
 /history – Recent checks 
-/premium – Upgrade plan 
+/premium – Premium info (purchases unavailable) 
 
 ⚠️ Always verify critical info yourself.`, { parse_mode: 'Markdown' });
 });
@@ -1577,23 +1567,13 @@ Use /refer to earn more credits!`, { parse_mode: 'Markdown' });
   
   if (text.includes('Premium')) {
     // Trigger /premium logic
-    await ctx.reply(`⭐ *Go Premium*
+    await ctx.reply(`⭐ *Premium*
 
-Unlock unlimited checks and advanced features:
+Purchases are no longer available. New premium plans and credit packs can't be bought anymore.
 
-💎 Individual Weekly: ₹29 / 150 ⭐
-💎 Individual Monthly: ₹99 / 500 ⭐
-💎 Individual Annual: ₹799 (33% off)
-💎 Group Monthly: ₹299
-
-Pay with UPI, cards, or Telegram Stars!`, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: 'Upgrade Now', web_app: { url: `${config.TMA_URL}/premium.html` } }
-        ]]
-      }
-    });
+If you already paid, your access and credits stay active until they expire.`, {
+    parse_mode: 'Markdown'
+  });
     return;
   }
   
@@ -1609,7 +1589,7 @@ Commands:
 /history – Last checks
 /earn – Sponsored message
 /refer – Earn free credits
-/premium – Upgrade plan
+/premium – Premium info (purchases unavailable)
 /feedback – Submit suggestion/bug
 
 ⚠️ Always verify important info yourself.`, { parse_mode: 'Markdown' });

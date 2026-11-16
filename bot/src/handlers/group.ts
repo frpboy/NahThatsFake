@@ -28,16 +28,16 @@ export async function handleLinkGroup(ctx: Context) {
     const validGroupPlans = ['grp_monthly', 'grp_annual', 'org_custom'];
     if (!validGroupPlans.includes(userData.plan)) {
       await ctx.reply(`❌ You don't have a Group Plan.
-      
+
 Your current plan: ${userData.plan}
 
-Upgrade to a Group Plan to protect this chat.`);
+Group Plans are no longer available for purchase.`);
       return;
     }
 
     // 3. Check Expiry
     if (new Date(userData.premium_until) < new Date()) {
-      await ctx.reply('❌ Your Group Plan has expired. Please renew.');
+      await ctx.reply('❌ Your Group Plan has expired.');
       return;
     }
 

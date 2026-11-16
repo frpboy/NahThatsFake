@@ -484,12 +484,10 @@ function shareReferral() {
     }
 }
 
-// Upgrade to premium
+// Premium info (purchases removed 2026-11-16)
 function upgradePremium() {
     hapticFeedback('light');
-    // Use openInvoice if we have a direct invoice link, or navigate to a premium page
-    // For now, open the bot with /premium command
-    tg.openTelegramLink(`https://t.me/NahThatsFakeBot?start=premium`);
+    tg.showAlert('Purchases are no longer available. If you already paid, your access and credits stay active until they expire.');
 }
 
 // Open bot
