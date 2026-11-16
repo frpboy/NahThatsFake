@@ -33,8 +33,10 @@ export function createRateLimitMiddleware(client: RpcClient) {
   });
 
   if (error) {
-    console.error('[rateLimit] counter unavailable, allowing request:', error);
-    return next();
+    // Fail closed: skipping the check would weaken abuse enforcement, and the
+    // bot's other features already depend on the same store being reachable.
+    console.error('[rateLimit] counter unavailable, dropping request:', error);
+    return;
   }
 
   if (typeof count === 'number' && count > MAX_REQUESTS) {

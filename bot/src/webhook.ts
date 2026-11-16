@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import type { Bot } from 'grammy';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -45,23 +46,41 @@ export function createTelegramWebhookHandler(deps: WebhookDeps) {
   const { bot, supabase, secretToken } = deps;
   const takeoverAfterMs = deps.takeoverAfterMs ?? DEFAULT_TAKEOVER_MS;
   let initPromise: Promise<unknown> | null = null;
-  const ensureInit = () => (initPromise ??= bot.init());
+  const ensureInit = () =>
+    (initPromise ??= bot.init().catch((e) => {
+      // Do not cache a rejected init: a transient getMe failure must not
+      // poison every later delivery on this warm instance.
+      initPromise = null;
+      throw e;
+    }));
 
-  async function process(updateId: number, update: unknown, res: WebhookResponse): Promise<void> {
+  async function process(updateId: number, update: unknown, res: WebhookResponse, claimToken: string): Promise<void> {
     try {
       await ensureInit();
       await bot.handleUpdate(update as Parameters<Bot['handleUpdate']>[0]);
-      await supabase
+      // Fence by claim token: if our claim was taken over (stale), we must not
+      // overwrite the successor's state.
+      const { error: doneError } = await supabase
         .from('processed_updates')
         .update({ status: 'done', finished_at: new Date().toISOString() })
-        .eq('update_id', updateId);
+        .eq('update_id', updateId)
+        .eq('claim_token', claimToken);
+      if (doneError) {
+        // Work succeeded but the dedupe record could not be confirmed; ask
+        // Telegram to retry so the state converges (credit ledger prevents a
+        // double charge on that retry).
+        console.error('[webhook] failed to mark update done:', doneError);
+        res.status(500).end();
+        return;
+      }
       res.status(200).end();
     } catch (e) {
       console.error('[webhook] update processing failed:', e);
       await supabase
         .from('processed_updates')
         .update({ status: 'failed', finished_at: new Date().toISOString() })
-        .eq('update_id', updateId);
+        .eq('update_id', updateId)
+        .eq('claim_token', claimToken);
       res.status(500).end();
     }
   }
@@ -83,12 +102,13 @@ export function createTelegramWebhookHandler(deps: WebhookDeps) {
     }
     const updateId = update.update_id as number;
 
+    const claimToken = randomUUID();
     const { error: insertError } = await supabase
       .from('processed_updates')
-      .insert({ update_id: updateId, status: 'processing', started_at: new Date().toISOString() });
+      .insert({ update_id: updateId, status: 'processing', started_at: new Date().toISOString(), claim_token: claimToken });
 
     if (!insertError) {
-      await process(updateId, update, res);
+      await process(updateId, update, res, claimToken);
       return;
     }
 
@@ -132,9 +152,10 @@ export function createTelegramWebhookHandler(deps: WebhookDeps) {
     // claim by matching the exact observed state. If a concurrent claimant
     // won first, 0 rows match - that is a lost race, not an error; the
     // winner's delivery governs, so ack and skip.
+    const newClaimToken = randomUUID();
     const { data: claimed, error: claimError } = await supabase
       .from('processed_updates')
-      .update({ status: 'processing', started_at: new Date().toISOString() })
+      .update({ status: 'processing', started_at: new Date().toISOString(), claim_token: newClaimToken })
       .eq('update_id', updateId)
       .eq('status', row.status)
       .eq('started_at', row.started_at)
@@ -150,7 +171,7 @@ export function createTelegramWebhookHandler(deps: WebhookDeps) {
       return;
     }
 
-    await process(updateId, update, res);
+    await process(updateId, update, res, newClaimToken);
   };
 }
 
@@ -159,6 +180,14 @@ export function createTelegramWebhookHandler(deps: WebhookDeps) {
 // bot/env config is only required when the first webhook request arrives.
 let defaultHandler: ReturnType<typeof createTelegramWebhookHandler> | null = null;
 export function telegramWebhookHandler(req: WebhookRequest, res: WebhookResponse): Promise<void> {
+  // Authenticate BEFORE loading the bot/env modules: an unauthenticated
+  // request must not trigger any module-level effect.
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  const header = req.headers['x-telegram-bot-api-secret-token'];
+  if (!secret || header !== secret) {
+    res.status(401).end();
+    return Promise.resolve();
+  }
   if (!defaultHandler) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { bot } = require('./bot');
@@ -167,7 +196,7 @@ export function telegramWebhookHandler(req: WebhookRequest, res: WebhookResponse
     defaultHandler = createTelegramWebhookHandler({
       bot,
       supabase,
-      secretToken: process.env.TELEGRAM_WEBHOOK_SECRET,
+      secretToken: secret,
     });
   }
   return defaultHandler(req, res);

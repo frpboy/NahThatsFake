@@ -13,8 +13,8 @@ function fakeRes() {
 }
 
 // In-memory processed_updates store implementing the status machine.
-function fakeDb(initial?: Map<number, { status: string; started_at: string }>) {
-  const rows = initial ?? new Map<number, { status: string; started_at: string }>();
+function fakeDb(initial?: Map<number, { status: string; started_at: string; claim_token?: string }>) {
+  const rows = initial ?? new Map<number, { status: string; started_at: string; claim_token?: string }>();
   const calls = { inserted: [] as number[], statusUpdates: [] as any[], failInsert: null as any };
   return {
     rows, calls,
@@ -25,7 +25,7 @@ function fakeDb(initial?: Map<number, { status: string; started_at: string }>) {
           if (calls.failInsert) return { error: calls.failInsert };
           if (rows.has(row.update_id)) return { error: { code: '23505' } };
           calls.inserted.push(row.update_id);
-          rows.set(row.update_id, { status: row.status, started_at: row.started_at });
+          rows.set(row.update_id, { status: row.status, started_at: row.started_at, claim_token: row.claim_token });
           return { error: null };
         },
         update(patch: any) {

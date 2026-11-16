@@ -47,12 +47,12 @@ async function main() {
     assert.equal(proceeded, true);
     assert.equal(sb.calls.rpc, 0);
   }
-  // Counter store error -> fail open
+  // Counter store error -> fail closed (enforcement invariant preserved)
   {
     const sb = fakeSupabase({ error: { code: '53300' } });
     let proceeded = false;
     await createRateLimitMiddleware(sb)(ctx(123), async () => { proceeded = true; });
-    assert.equal(proceeded, true);
+    assert.equal(proceeded, false);
   }
   // No user on update (e.g. channel post) -> next
   {

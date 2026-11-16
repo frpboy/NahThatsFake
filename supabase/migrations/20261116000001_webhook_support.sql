@@ -11,7 +11,10 @@ CREATE TABLE IF NOT EXISTS public.processed_updates (
   update_id BIGINT PRIMARY KEY,
   status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'done', 'failed')),
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  finished_at TIMESTAMPTZ
+  finished_at TIMESTAMPTZ,
+  -- Fencing token: only the current claim owner may transition status, so a
+  -- stale worker cannot overwrite its successor's state.
+  claim_token UUID
 );
 
 CREATE INDEX IF NOT EXISTS processed_updates_received_at_idx
