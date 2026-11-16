@@ -355,6 +355,37 @@ app.post('/api/payment/create-razorpay-order', validateTelegramData, async (req,
   }
 });
 
+
+// --- Payment correctness (bounded patch, 2026-11-16, rev2) -----------------
+// Webhook acknowledgment contract: a non-2xx response makes Razorpay retry
+// with exponential backoff for 24h after event creation, then disables the
+// webhook and sends an alert email; delivery is at-least-once with a 5s
+// response timeout. Ref: https://razorpay.com/docs/webhooks/best-practices/
+// So no failure path below acknowledges the event: every one returns 5xx
+// (fail closed - no fulfillment, order stays pending, the provider still
+// holds the captured payment) and redelivery is idempotent via the live
+// fulfill_payment dedupe. No permanent/transient classification is made: an
+// unresolved user or missing identity can be delayed state or a lookup
+// error, not proven permanent invalidity. Payload shapes are event-specific:
+// order.paid carries payment+order entities; payment.captured carries ONLY
+// the payment entity. Ref: https://razorpay.com/docs/webhooks/orders
+
+// Captured-payment + identity validation for the verify route. Signature and
+// order checks prove the Checkout callback is authentic, NOT that money
+// settled: only `captured` payments are fulfillable - `authorized` payments
+// auto-refund if never captured ("payments that are not captured within this
+// period will be refunded automatically to customers"). Ref:
+// https://razorpay.com/docs/payments/payments/capture-settings
+function validateCapturedPayment(payment, order, planDetails, paymentId, orderId) {
+  if (!payment || payment.id !== paymentId) return { ok: false, reason: 'payment-not-found' };
+  if (payment.status !== 'captured') return { ok: false, reason: 'payment-not-captured', status: payment.status || 'unknown' };
+  if (payment.order_id !== orderId) return { ok: false, reason: 'payment-order-mismatch' };
+  if (!order || order.id !== orderId) return { ok: false, reason: 'order-not-found' };
+  if (payment.currency !== 'INR' || Number(payment.amount) !== Number(planDetails.amount))
+    return { ok: false, reason: 'payment-amount-mismatch' };
+  return { ok: true };
+}
+
 // 2. Verify Razorpay Payment
 app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) => {
   const { planId, razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
@@ -394,6 +425,21 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
       if (!planDetails) throw new Error('Invalid plan');
       if (razorpayOrder.currency !== 'INR' || razorpayOrder.amount !== planDetails.amount) {
         throw new Error('Payment amount mismatch');
+      }
+
+      // Captured-payment + identity validation: do not fulfill on signature +
+      // order metadata alone. 409 (not 500) so the mini app can distinguish
+      // "payment not settled yet, retry" from a server fault.
+      const razorpayPayment = await razorpay.payments.fetch(razorpay_payment_id);
+      const paymentCheck = validateCapturedPayment(razorpayPayment, razorpayOrder, planDetails, razorpay_payment_id, razorpay_order_id);
+      if (!paymentCheck.ok) {
+        console.error('Payment validation rejected:', paymentCheck);
+        return res.status(409).json({
+          success: false,
+          error: 'Payment not fulfillable',
+          reason: paymentCheck.reason,
+          ...(paymentCheck.status ? { paymentStatus: paymentCheck.status } : {})
+        });
       }
 
       const paymentClient = getPaymentSupabase();
@@ -513,55 +559,130 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
 
     console.log(`Received Razorpay webhook: ${event}`);
 
+    const eventId = req.headers['x-razorpay-event-id'] || null;
+    // Minimal non-personal diagnostics only: reason + provider event/payment/
+    // order ids. No payload, notes, signature, initData or user identifiers.
+    const diag = { reason: null, eventId, paymentId: null, orderId: null };
     try {
       if (event === 'order.paid' || event === 'payment.captured') {
-        const payment = payload.payment.entity;
-        const order = payload.order.entity;
-        
-        // Extract metadata from notes
-        const { telegramUserId, planId } = payment.notes || order.notes || {};
-        
-        if (telegramUserId && planId) {
+        // Event-specific payload shape (https://razorpay.com/docs/webhooks/orders):
+        // order.paid carries payment+order entities; payment.captured carries
+        // ONLY the payment entity (contains: ["payment"]).
+        const payment = payload && payload.payment && payload.payment.entity;
+        if (!payment || !payment.id || !payment.order_id) {
+          diag.reason = 'malformed-payment-entity';
+          throw new Error(diag.reason);
+        }
+        diag.paymentId = payment.id;
+        diag.orderId = payment.order_id;
+
+        // A signed event type is not shape validation: fulfill only captured
+        // payments; authorized payments auto-refund if never captured
+        // (https://razorpay.com/docs/payments/payments/capture-settings).
+        if (payment.status !== 'captured') {
+          diag.reason = 'payment-not-captured';
+          throw new Error(diag.reason);
+        }
+
+        // Trusted order: use the payload order entity when present, else
+        // resolve it from the provider by payment.order_id (payment.captured
+        // has no order entity). A payload/fetched order must bind to this
+        // payment.
+        let order = payload && payload.order && payload.order.entity;
+        if (order && order.id !== payment.order_id) {
+          diag.reason = 'payment-order-mismatch';
+          throw new Error(diag.reason);
+        }
+        if (!order) {
+          try {
+            order = await razorpay.orders.fetch(payment.order_id);
+          } catch (orderFetchErr) {
+            diag.reason = 'order-fetch-failed';
+            throw new Error(diag.reason);
+          }
+          if (!order || order.id !== payment.order_id) {
+            diag.reason = 'order-fetch-mismatch';
+            throw new Error(diag.reason);
+          }
+        }
+
+        // Identity/plan come from the ORDER's notes only: they are written
+        // server-side at order creation. Payment notes may be empty ({} or
+        // the documented []) and must not mask order notes; a conflicting
+        // non-empty payment note is rejected, never silently preferred.
+        const orderNotes = order.notes || {};
+        const paymentNotes = payment.notes || {};
+        const telegramUserId = orderNotes.telegramUserId;
+        const planId = orderNotes.planId;
+        if (!telegramUserId || !planId) {
+          diag.reason = 'missing-payment-identity';
+          throw new Error(diag.reason);
+        }
+        if ((paymentNotes.telegramUserId != null && paymentNotes.telegramUserId.toString() !== telegramUserId.toString())
+            || (paymentNotes.planId != null && paymentNotes.planId !== planId)) {
+          diag.reason = 'payment-notes-conflict';
+          throw new Error(diag.reason);
+        }
+
+        {
           const planDetails = getPlanDetails(planId);
           if (!planDetails || payment.currency !== 'INR' || order.currency !== 'INR'
-              || payment.amount !== planDetails.amount || order.amount !== planDetails.amount) {
-            throw new Error('Webhook payment metadata mismatch');
+              || Number(payment.amount) !== Number(planDetails.amount) || Number(order.amount) !== Number(planDetails.amount)) {
+            diag.reason = 'metadata-mismatch';
+            throw new Error(diag.reason);
           }
 
           const paymentClient = getPaymentSupabase();
-          const { data: user } = await paymentClient
+          const { data: user, error: userError } = await paymentClient
             .from('users')
             .select('id')
             .eq('telegram_user_id', telegramUserId.toString())
             .single();
 
-          if (user) {
-            const premiumUntil = planDetails.is_credit
-              ? null
-              : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString();
-            const { error: fulfillmentError } = await paymentClient.rpc('fulfill_payment', {
-              p_user_id: user.id,
-              p_plan_id: planId,
-              p_payment_id: payment.id,
-              p_payment_method: 'razorpay',
-              p_amount_inr: payment.amount,
-              p_order_id: order.id,
-              p_premium_until: premiumUntil,
-              p_credits: planDetails.is_credit ? planDetails.credits : 0
-            });
-            if (fulfillmentError) {
-              throw new Error('Failed to fulfill webhook payment');
-            }
-            console.log(`Webhook: Fulfilled ${planId} for user ${telegramUserId}`);
+          // An unresolved user is NOT proven permanent invalidity (signup
+          // ordering, replication lag or lookup error), so it stays on the
+          // same fail-closed retryable path as every other failure.
+          if (userError || !user) {
+            diag.reason = 'user-unresolved';
+            throw new Error(diag.reason);
           }
+
+          // Entitlement arithmetic intentionally unchanged (existing policy).
+          const premiumUntil = planDetails.is_credit
+            ? null
+            : new Date(Date.now() + planDetails.days * 24 * 60 * 60 * 1000).toISOString();
+          const { error: fulfillmentError } = await paymentClient.rpc('fulfill_payment', {
+            p_user_id: user.id,
+            p_plan_id: planId,
+            p_payment_id: payment.id,
+            p_payment_method: 'razorpay',
+            p_amount_inr: payment.amount,
+            p_order_id: order.id,
+            p_premium_until: premiumUntil,
+            p_credits: planDetails.is_credit ? planDetails.credits : 0
+          });
+          if (fulfillmentError) {
+            diag.reason = 'fulfillment-failed';
+            throw new Error(diag.reason);
+          }
+          console.log(`Webhook: Fulfilled ${planId} for user ${telegramUserId}`);
         }
       }
+      return res.json({ status: 'ok' });
     } catch (err) {
-      console.error('Webhook processing error:', err);
-      // Return 200 anyway to prevent Razorpay from retrying indefinitely on logic errors
+      // Fail closed, always retryable: a non-2xx response keeps Razorpay's
+      // exponential-backoff retry schedule alive (24h after event creation,
+      // then the webhook is disabled and an alert email is sent -
+      // https://razorpay.com/docs/webhooks/best-practices/). That is a
+      // bounded retry window, not a guaranteed eventual repair. Redelivery is
+      // idempotent via the live fulfill_payment dedupe
+      // (payments_payment_id_unique, grant on insert win).
+      diag.reason = diag.reason || 'unexpected-error';
+      console.error('Webhook not fulfilled:', diag.reason, {
+        eventId: diag.eventId, paymentId: diag.paymentId, orderId: diag.orderId
+      });
+      return res.status(500).send('Fulfillment failed - retry expected');
     }
-    
-    res.json({ status: 'ok' });
   } else {
     res.status(400).send('Invalid signature');
   }
@@ -575,3 +696,4 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 module.exports = app;
+module.exports.validateCapturedPayment = validateCapturedPayment;
