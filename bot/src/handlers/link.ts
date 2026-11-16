@@ -127,21 +127,37 @@ export async function processLinkCheck(ctx: Context) {
         } else if ((pendingError as { code?: string }).code === '23505') {
           const { data: existing } = await supabase
             .from('check_cache')
-            .select('pending_update_id')
+            .select('pending_update_id, created_at')
             .eq('check_type', 'link')
             .eq('content_hash', urlHash)
             .eq('scan_status', 'pending')
             .single();
           if (existing && existing.pending_update_id != null && existing.pending_update_id !== updateId) {
-            const { data: reclaimed } = await supabase
-              .from('check_cache')
-              .update({ pending_update_id: updateId, expires_at: pendingExpiry })
-              .eq('check_type', 'link')
-              .eq('content_hash', urlHash)
-              .eq('scan_status', 'pending')
-              .eq('pending_update_id', existing.pending_update_id)
-              .select('content_hash');
-            claimed = Boolean(reclaimed && reclaimed.length === 1);
+            // Same concurrent-work guards as image scans: the old attempt
+            // must be past any live provider call (30s bound, 2min margin)
+            // and its owning delivery must not be actively processing.
+            const markerAgeMs = Date.now() - new Date(existing.created_at).getTime();
+            const { data: ownerRow } = await supabase
+              .from('processed_updates')
+              .select('status, started_at')
+              .eq('update_id', existing.pending_update_id)
+              .single();
+            const ownerActive =
+              ownerRow &&
+              ownerRow.status === 'processing' &&
+              Date.now() - new Date(ownerRow.started_at).getTime() <= 10 * 60 * 1000; // webhook takeover TTL
+            if (markerAgeMs >= 2 * 60 * 1000 && !ownerActive) {
+              const { data: reclaimed } = await supabase
+                .from('check_cache')
+                .update({ pending_update_id: updateId, expires_at: pendingExpiry })
+                .eq('check_type', 'link')
+                .eq('content_hash', urlHash)
+                .eq('scan_status', 'pending')
+                .eq('pending_update_id', existing.pending_update_id)
+                .eq('created_at', existing.created_at)
+                .select('content_hash');
+              claimed = Boolean(reclaimed && reclaimed.length === 1);
+            }
           }
         } else {
           console.error('Link pending-scan claim error:', pendingError);

@@ -4,13 +4,35 @@
 -- See bot/src/webhook.ts, bot/src/phases.ts, bot/src/utils/credits.ts,
 -- bot/src/middleware/rateLimit.ts.
 --
--- Rehearsal/upgrade contract: this file is SELF-HEALING across earlier PR451
--- revisions of itself (drop/re-add constraints, drop superseded table shapes
--- and function overloads), because CREATE TABLE IF NOT EXISTS never evolves
--- an existing table. It has NOT been applied to production (no migration
--- apply was ever authorized or executed); the deployment checklist must
--- verify that condition explicitly (pg_migrations / schema introspection)
--- before applying.
+-- Precondition: VIRGIN state. No PR451 migration revision was ever applied
+-- to production (no apply was authorized or executed), and this file REFUSES
+-- to run over any prior revision state (see the preflight block below): an
+-- implicit upgrade would fabricate or destroy operation state. If the
+-- preflight trips, the operator must verify what exists and reconcile
+-- manually before applying - that is a deliberate stop, not an error to
+-- bypass. The deployment checklist must record the preflight result.
+
+-- 0. Preflight: refuse on ANY prior revision state.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name IN ('processed_updates', 'credit_charges', 'rate_limit_windows', 'rate_limit_hits', 'rate_limit_windows_legacy_v1')
+  ) OR EXISTS (
+    SELECT 1 FROM pg_proc WHERE proname IN ('consume_credit_atomic', 'rate_limit_hit')
+  ) OR EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'check_cache'
+      AND column_name IN ('scan_status', 'pending_update_id')
+  ) OR EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'users'
+      AND column_name = 'daily_credits_date'
+  ) THEN
+    RAISE EXCEPTION 'webhook_support preflight: prior revision state detected. Refusing implicit upgrade - verify and reconcile existing objects manually before applying.';
+  END IF;
+END $$;
 
 -- 1. processed_updates: durable work-state for Telegram webhook deliveries.
 --    Telegram retries a delivery until it gets a non-5xx response (up to ~24h).
@@ -24,7 +46,7 @@
 --    marker was missing.
 CREATE TABLE IF NOT EXISTS public.processed_updates (
   update_id BIGINT PRIMARY KEY,
-  status TEXT NOT NULL DEFAULT 'processing',
+  status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'done', 'failed', 'ambiguous')),
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   finished_at TIMESTAMPTZ,
   -- Fencing token: only the current claim owner may transition status, so a
@@ -33,14 +55,6 @@ CREATE TABLE IF NOT EXISTS public.processed_updates (
   reply_phase TEXT CHECK (reply_phase IN ('replying', 'replied'))
 );
 
--- Evolve earlier revisions that lacked 'ambiguous' / reply_phase.
-ALTER TABLE public.processed_updates
-  ADD COLUMN IF NOT EXISTS reply_phase TEXT CHECK (reply_phase IN ('replying', 'replied'));
-ALTER TABLE public.processed_updates
-  DROP CONSTRAINT IF EXISTS processed_updates_status_check;
-ALTER TABLE public.processed_updates
-  ADD CONSTRAINT processed_updates_status_check
-  CHECK (status IN ('processing', 'done', 'failed', 'ambiguous'));
 
 CREATE INDEX IF NOT EXISTS processed_updates_received_at_idx
   ON public.processed_updates (started_at);
@@ -57,16 +71,9 @@ ALTER TABLE public.processed_updates ENABLE ROW LEVEL SECURITY;
 CREATE TABLE IF NOT EXISTS public.credit_charges (
   update_id BIGINT PRIMARY KEY,
   telegram_user_id TEXT NOT NULL,
-  credit_type TEXT NOT NULL,
+  credit_type TEXT NOT NULL CHECK (credit_type IN ('daily', 'permanent', 'premium', 'owner')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
--- Evolve earlier revisions whose CHECK excluded zero-cost outcomes.
-ALTER TABLE public.credit_charges
-  DROP CONSTRAINT IF EXISTS credit_charges_credit_type_check;
-ALTER TABLE public.credit_charges
-  ADD CONSTRAINT credit_charges_credit_type_check
-  CHECK (credit_type IN ('daily', 'permanent', 'premium', 'owner'));
 
 ALTER TABLE public.credit_charges ENABLE ROW LEVEL SECURITY;
 
@@ -162,12 +169,7 @@ $$;
 --    count, which may have moved on (admitted work must stay admitted on
 --    retry, dropped work must stay dropped). The record is identity-bound: a
 --    recorded decision for a different user raises instead of answering.
---    Earlier revisions used a per-minute composite-PK table: it is dropped
---    here (rate windows are ephemeral; the only casualty is in-flight
---    counters, which reset) because CREATE TABLE IF NOT EXISTS cannot evolve
---    it.
-DROP TABLE IF EXISTS public.rate_limit_windows;
-CREATE TABLE public.rate_limit_windows (
+CREATE TABLE IF NOT EXISTS public.rate_limit_windows (
   user_id TEXT PRIMARY KEY,
   window_start TIMESTAMPTZ NOT NULL,
   hit_count INTEGER NOT NULL DEFAULT 0
@@ -183,15 +185,9 @@ CREATE TABLE IF NOT EXISTS public.rate_limit_hits (
   counted_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Evolve earlier revisions that lacked the decision columns.
-ALTER TABLE public.rate_limit_hits ADD COLUMN IF NOT EXISTS hit_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE public.rate_limit_hits ADD COLUMN IF NOT EXISTS window_start TIMESTAMPTZ NOT NULL DEFAULT now();
 
 ALTER TABLE public.rate_limit_hits ENABLE ROW LEVEL SECURITY;
 -- rate_limit_hits rows older than 24h can be pruned safely.
-
--- Remove the superseded single-argument overload from earlier revisions.
-DROP FUNCTION IF EXISTS rate_limit_hit(TEXT);
 
 CREATE OR REPLACE FUNCTION rate_limit_hit(p_telegram_user_id TEXT, p_update_id BIGINT DEFAULT NULL)
 RETURNS INTEGER

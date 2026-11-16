@@ -172,11 +172,11 @@ export async function claimImagePendingScan(imageHash: string, updateId: number)
     return 'blocked';
   }
   // Row exists. Only a DIFFERENT operation (a fresh user-initiated scan, not a
-  // retry of the uncertain attempt) may reclaim it, guarded by the observed
-  // owner so concurrent reclaimers cannot both win.
+  // retry of the uncertain attempt) may reclaim it, and only when the old
+  // attempt cannot still be running concurrently:
   const { data: existing } = await supabase
     .from('check_cache')
-    .select('pending_update_id')
+    .select('pending_update_id, created_at')
     .eq('check_type', 'image')
     .eq('content_hash', imageHash)
     .eq('scan_status', 'pending')
@@ -184,6 +184,27 @@ export async function claimImagePendingScan(imageHash: string, updateId: number)
   if (!existing || existing.pending_update_id == null || existing.pending_update_id === updateId) {
     return 'blocked';
   }
+  // (a) The provider call self-bounds at 30s, so a marker younger than 2
+  //     minutes may still have a live provider call behind it.
+  const markerAgeMs = Date.now() - new Date(existing.created_at).getTime();
+  if (markerAgeMs < 2 * 60 * 1000) {
+    return 'blocked';
+  }
+  // (b) The owning delivery must not be actively processing (fresh claim).
+  const { data: ownerRow } = await supabase
+    .from('processed_updates')
+    .select('status, started_at')
+    .eq('update_id', existing.pending_update_id)
+    .single();
+  if (
+    ownerRow &&
+    ownerRow.status === 'processing' &&
+    Date.now() - new Date(ownerRow.started_at).getTime() <= 10 * 60 * 1000 // webhook takeover TTL
+  ) {
+    return 'blocked';
+  }
+  // Guarded by the observed owner AND creation instant so concurrent
+  // reclaimers cannot both win.
   const { data: reclaimed } = await supabase
     .from('check_cache')
     .update({ pending_update_id: updateId, expires_at: pendingExpiry })
@@ -191,6 +212,7 @@ export async function claimImagePendingScan(imageHash: string, updateId: number)
     .eq('content_hash', imageHash)
     .eq('scan_status', 'pending')
     .eq('pending_update_id', existing.pending_update_id)
+    .eq('created_at', existing.created_at)
     .select('content_hash');
   return reclaimed && reclaimed.length === 1 ? 'claimed' : 'blocked';
 }
