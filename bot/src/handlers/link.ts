@@ -78,22 +78,24 @@ export async function processLinkCheck(ctx: Context) {
     // Version the cache key so legacy results created by fail-open provider handling are not reused.
     const urlHash = crypto.createHash('sha256').update(`urlscanner-v2:${normalizedUrl}`).digest('hex');
 
-    // Check cache first. A live 'pending' marker means a previous attempt may
-    // still be scanning (or crashed mid-scan): do not start a second scan.
+    // Check cache first (pending markers are visible regardless of expiry:
+    // expiry bounds cache reuse, never spend uncertainty). A retry of the
+    // SAME update must never start a second scan on uncertain state.
     const { data: cached } = await supabase
       .from('check_cache')
       .select('*')
       .eq('check_type', 'link')
       .eq('content_hash', urlHash)
-      .gt('expires_at', new Date().toISOString())
       .single();
 
-    if (ntf && cached?.scan_status === 'pending') {
-      throw new AmbiguousOperationError('previous link scan may still be in flight; not starting another');
+    const cachedPending = cached?.scan_status === 'pending';
+    if (ntf && cachedPending && cached?.pending_update_id === updateId) {
+      throw new AmbiguousOperationError('this update\'s scan may already be in flight; not starting another');
     }
 
+    const cacheHit = cached && !cachedPending && new Date(cached.expires_at).getTime() > Date.now();
     let result;
-    if (cached && cached.scan_status !== 'pending') {
+    if (cacheHit) {
       result = {
         score: cached.score,
         risk_level: cached.risk_level,
@@ -104,23 +106,48 @@ export async function processLinkCheck(ctx: Context) {
     } else {
       if (ntf) {
         throwIfAborted(ntf);
-        // Record the scan phase BEFORE calling providers (same pending-marker
-        // contract as image scans; 10-minute pending expiry).
+        // Record the scan phase BEFORE calling providers, bound to this
+        // operation (same pending-marker contract as image scans). A fresh
+        // user operation (different update_id) may reclaim a marker left by
+        // an interrupted attempt - a new, informed scan decision - via a
+        // guarded update; a retry of the SAME update never may.
         const pendingExpiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+        let claimed = false;
         const { error: pendingError } = await supabase.from('check_cache').insert({
           check_type: 'link',
           content_hash: urlHash,
           score: 0,
           risk_level: 'LOW',
           scan_status: 'pending',
+          pending_update_id: updateId,
           expires_at: pendingExpiry
         });
-        if (pendingError) {
-          if ((pendingError as { code?: string }).code === '23505') {
-            throw new AmbiguousOperationError('concurrent or uncertain link scan owns the pending marker; not starting another');
+        if (!pendingError) {
+          claimed = true;
+        } else if ((pendingError as { code?: string }).code === '23505') {
+          const { data: existing } = await supabase
+            .from('check_cache')
+            .select('pending_update_id')
+            .eq('check_type', 'link')
+            .eq('content_hash', urlHash)
+            .eq('scan_status', 'pending')
+            .single();
+          if (existing && existing.pending_update_id != null && existing.pending_update_id !== updateId) {
+            const { data: reclaimed } = await supabase
+              .from('check_cache')
+              .update({ pending_update_id: updateId, expires_at: pendingExpiry })
+              .eq('check_type', 'link')
+              .eq('content_hash', urlHash)
+              .eq('scan_status', 'pending')
+              .eq('pending_update_id', existing.pending_update_id)
+              .select('content_hash');
+            claimed = Boolean(reclaimed && reclaimed.length === 1);
           }
+        } else {
           console.error('Link pending-scan claim error:', pendingError);
-          throw new AmbiguousOperationError('could not record scan phase; not starting scan');
+        }
+        if (!claimed) {
+          throw new AmbiguousOperationError('concurrent or uncertain link scan owns the pending marker; not starting another');
         }
       }
       throwIfAborted(ntf);
@@ -148,23 +175,33 @@ export async function processLinkCheck(ctx: Context) {
 
       if (ntf) {
         if (apiResult.scan_status === 'complete') {
-          // Flip the pending marker to a completed 7-day cache entry.
-          await supabase.from('check_cache').upsert({
-            check_type: 'link',
-            content_hash: urlHash,
-            score: result.score,
-            risk_level: result.risk_level,
-            api_source: result.api_source,
-            scan_status: 'complete',
-            expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
-          }, { onConflict: 'check_type,content_hash' });
+          // Flip OUR pending marker to a completed 7-day cache entry
+          // (identity-bound; another operation's marker is never overwritten).
+          const { data: flipped, error: flipError } = await supabase
+            .from('check_cache')
+            .update({
+              score: result.score,
+              risk_level: result.risk_level,
+              api_source: result.api_source,
+              scan_status: 'complete',
+              expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
+            })
+            .eq('check_type', 'link')
+            .eq('content_hash', urlHash)
+            .eq('scan_status', 'pending')
+            .eq('pending_update_id', updateId)
+            .select('content_hash');
+          if (flipError || !flipped || flipped.length !== 1) {
+            console.error('Link cache completion write did not match our pending marker:', flipError ?? '0 rows / marker lost');
+          }
         } else {
           // Definitive incomplete result (providers answered/failed): release
-          // the pending marker so a later retry is safe.
+          // our pending marker so a later retry is safe.
           await supabase.from('check_cache').delete()
             .eq('check_type', 'link')
             .eq('content_hash', urlHash)
-            .eq('scan_status', 'pending');
+            .eq('scan_status', 'pending')
+            .eq('pending_update_id', updateId);
         }
       } else {
         // Long-poll mode: only cache complete two-provider scans; partial
@@ -242,7 +279,7 @@ Need a detailed report? Open the full app for more insights.`, {
       // Stop-on-ambiguity: tell the user once, do not auto-retry an uncertain scan.
       console.error('Link check stopped as ambiguous:', error.message);
       try {
-        await ctx.reply('⚠️ That check was interrupted and I cannot safely confirm whether the scan completed. It will not retry automatically - please send the link again in a few minutes.');
+        await ctx.reply('⚠️ That check was interrupted and I cannot confirm whether the scan completed, so it will not retry automatically. Sending the link again starts a new check and uses a new credit.');
       } catch (noticeError) {
         console.error('Could not send ambiguity notice:', noticeError);
       }

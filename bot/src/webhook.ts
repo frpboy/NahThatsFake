@@ -24,15 +24,22 @@ export interface WebhookDeps {
   settleGraceMs?: number;
 }
 
-// Takeover TTL must exceed the longest possible LIVE worker with margin:
-// watchdog (240s) + settle grace (35s) = 275s worst-case live work, so a
-// worker can never legitimately be alive at 10 minutes. Takeover therefore
-// only ever reclaims genuinely dead invocations.
+// Takeover TTL: 10 minutes. This is NOT a proven bound on worker lifetime -
+// no such bound is claimed. It is a practical delay before a possibly-dead
+// invocation may be reclaimed, and correctness does not depend on the
+// reclaimed worker actually being dead: a late or unabortable worker's DB
+// writes stay fenced by its claim token, its result reply is gated by the
+// fenced reply_phase marker (a lost fence aborts BEFORE the send), and its
+// provider phase is guarded by the identity-bound pending marker (a retry
+// never re-calls a provider on uncertain spend; a late completing write only
+// fills the cache, never duplicates an effect).
 const DEFAULT_TAKEOVER_MS = 10 * 60 * 1000;
 const DEFAULT_WATCHDOG_MS = 240 * 1000;
-// Every DB call self-bounds at 30s (supabase client fetch timeout) and every
-// instrumented network call carries the abort signal, so aborted work unwinds
-// well within 35s.
+// Grace period to let aborted work unwind before we answer 500. Instrumented
+// network calls carry the abort signal and every DB call self-bounds at 30s,
+// so well-behaved work settles within this window; if it does not, its
+// remaining effects are still fenced by claim token / reply_phase / pending
+// marker (see the TTL note above) - the grace is best-effort, not a bound.
 const DEFAULT_SETTLE_GRACE_MS = 35 * 1000;
 
 type UpdateRow = { update_id: number; status: string; started_at: string; reply_phase: string | null };
@@ -54,10 +61,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * Per-effect durable phases make reprocessing safe:
  * - credit outcome: recorded once in credit_charges by consume_credit_atomic
  *   (including zero-cost outcomes), replayed - never re-evaluated - on retry.
- * - scan result: a 'pending' check_cache row precedes the provider call; a
- *   later delivery seeing a live pending row stops as ambiguous instead of
- *   re-calling a paid provider with uncertain spend. Completed results are
- *   reused from the cache.
+ * - scan result: an identity-bound 'pending' check_cache row precedes the
+ *   provider call; a later delivery of the same update seeing that marker
+ *   stops as ambiguous instead of re-calling a paid provider with uncertain
+ *   spend. Time passing never resolves the uncertainty: markers are reclaimed
+ *   only by their owner or by an explicit new user operation. Completed
+ *   results are reused from the cache.
  * - result reply: reply_phase 'replying' precedes the send, 'replied'
  *   confirms it. A later delivery seeing 'replying' stops as ambiguous
  *   (the reply may have been sent); 'replied' converges to done.

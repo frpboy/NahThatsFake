@@ -82,8 +82,10 @@ export async function processImageCheck(ctx: Context) {
     // Generate hash for caching
     const imageHash = crypto.createHash('sha256').update(imageBuffer).digest('hex');
 
-    // Check cache. A live 'pending' marker means a previous attempt may have
-    // reached the paid provider: never re-call it on uncertain spend.
+    // Check cache. A pending marker means a previous attempt may have reached
+    // the paid provider. A retry of the SAME update must never re-call on
+    // uncertain spend; only a genuinely new user operation (different
+    // update_id) may reclaim the marker as a fresh, informed scan decision.
     const cached = await checkImageCache(imageHash);
 
     let result;
@@ -96,11 +98,11 @@ export async function processImageCheck(ctx: Context) {
       };
     } else {
       if (ntf) {
-        if (cached.state === 'pending') {
-          throw new AmbiguousOperationError('previous image scan may have reached the provider; not re-calling');
+        if (cached.state === 'pending' && cached.pendingUpdateId === updateId) {
+          throw new AmbiguousOperationError('this update\'s scan may have reached the provider; not re-calling');
         }
         throwIfAborted(ntf);
-        if (await claimImagePendingScan(imageHash) !== 'claimed') {
+        if (updateId === undefined || await claimImagePendingScan(imageHash, updateId) !== 'claimed') {
           throw new AmbiguousOperationError('concurrent or uncertain image scan owns the pending marker; not re-calling');
         }
       }
@@ -111,8 +113,8 @@ export async function processImageCheck(ctx: Context) {
       } catch (scanError) {
         if (ntf && scanError instanceof ScanDefinitiveError) {
           // The provider answered definitively: no spend uncertainty, release
-          // the pending marker so a later retry is safe.
-          await clearImagePendingScan(imageHash);
+          // our pending marker so a later retry is safe.
+          await clearImagePendingScan(imageHash, updateId);
         }
         // ScanAmbiguousError (or anything else): the pending marker stays, so
         // a later delivery stops instead of re-calling the provider.
@@ -127,8 +129,9 @@ export async function processImageCheck(ctx: Context) {
       };
 
       // Persist the result BEFORE the reply phase: the completed scan must be
-      // durable before the irreversible reply is attempted.
-      await saveImageCache(imageHash, result.score, result.risk_level, result.api_source);
+      // durable before the irreversible reply is attempted. A failed
+      // completion write is logged inside; the result is still delivered.
+      await saveImageCache(imageHash, result.score, result.risk_level, result.api_source, ntf ? updateId : undefined);
     }
 
     if (!isImpersonating) {
@@ -184,7 +187,7 @@ ${result.cached ? '⚡ Cached result' : '🔄 Fresh analysis'}
       // Stop-on-ambiguity: tell the user once, do not auto-retry uncertain spend.
       console.error('Image check stopped as ambiguous:', error.message);
       try {
-        await ctx.reply('⚠️ That check was interrupted and I cannot safely confirm whether the analysis ran. To avoid a possible duplicate paid analysis it will not retry automatically - please send the image again in a few minutes.');
+        await ctx.reply('⚠️ That check was interrupted and I cannot confirm whether the analysis ran, so it will not retry automatically (to avoid a possible duplicate charge). Sending the image again starts a new check and uses a new credit.');
       } catch (noticeError) {
         console.error('Could not send ambiguity notice:', noticeError);
       }

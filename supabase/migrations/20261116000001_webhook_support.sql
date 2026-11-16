@@ -200,13 +200,19 @@ END;
 $$;
 
 -- 6. Scan-cache phase marker: a 'pending' row is written BEFORE the provider
---    call. A later delivery seeing a live pending row knows the provider may
---    already have been called (uncertain spend) and must NOT call it again;
---    the operation stops as ambiguous. Pending rows expire after 10 minutes
---    (a real provider call completes in well under a minute); completed rows
---    keep their normal 30d/7d cache lifetimes. NULL = legacy complete row.
+--    call, bound to the operation that owns it (pending_update_id). A later
+--    delivery of the SAME update seeing its pending row knows the provider
+--    may already have been called (uncertain spend) and must NOT call it
+--    again; the operation stops as ambiguous. Time passing NEVER resolves
+--    spend uncertainty: a pending marker is never reclaimed by expiry, only
+--    by (a) the owning operation completing/clearing it, or (b) an explicit
+--    NEW user operation (different update_id = a fresh, user-initiated scan
+--    decision) claiming it with a guarded update. NULL scan_status = legacy
+--    complete row.
 ALTER TABLE public.check_cache
   ADD COLUMN IF NOT EXISTS scan_status TEXT CHECK (scan_status IN ('pending', 'complete'));
+ALTER TABLE public.check_cache
+  ADD COLUMN IF NOT EXISTS pending_update_id BIGINT;
 
 -- Privilege hardening: SECURITY DEFINER functions are executable by PUBLIC by
 -- default, which would let anon/authenticated keys call them directly and
