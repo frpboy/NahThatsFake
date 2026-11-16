@@ -14,77 +14,131 @@ export interface WebhookDeps {
   bot: Bot;
   supabase: SupabaseClient;
   secretToken?: string;
+  /** How long a 'processing' marker is trusted before a retry may take over (crash recovery). */
+  takeoverAfterMs?: number;
 }
+
+const DEFAULT_TAKEOVER_MS = 5 * 60 * 1000;
+
+type UpdateRow = { update_id: number; status: string; started_at: string };
 
 /**
  * Telegram webhook handler for the Vercel serverless deployment.
  *
- * Delivery semantics (preserves long-polling behaviour):
- * - Telegram retries an update until it gets a non-5xx response (up to ~24h).
- * - We insert update_id into processed_updates first; a unique-violation means
- *   a retry/concurrent duplicate -> ack 200 without reprocessing.
- * - If processing throws, we delete the marker and return 500 so Telegram
- *   retries later (at-least-once, same as long polling after a crash).
- * - If the invocation is killed mid-processing, the marker remains and the
- *   retried delivery is acked without reprocessing (at-most-once for that
- *   crash window) - matches a long-polling crash between offset advance and
- *   reply, so no new failure mode is introduced.
+ * Delivery semantics:
+ * - Requires TELEGRAM_WEBHOOK_SECRET; fails closed (401) when unset or wrong.
+ * - Calls bot.init() once per instance (grammy requires it before handleUpdate).
+ * - Idempotency via processed_updates (update_id PK, status processing|done|failed):
+ *   - first delivery inserts 'processing' and handles the update
+ *   - success -> status 'done', 200; later duplicates are acked and skipped
+ *   - handler error -> status 'failed', 500 so Telegram retries; a retry seeing
+ *     'failed' reprocesses (side effects are guarded by credit_charges in
+ *     consumeCredit; a repeated provider call / duplicate reply is still
+ *     possible after a partial failure - same residual risk as a long-poll
+ *     crash mid-handler)
+ *   - conflict on 'processing': fresh (< takeoverAfterMs) means another
+ *     invocation is in flight -> ack and skip; stale means its invocation died
+ *     -> take over and reprocess
+ *   - dedupe-table errors -> 500 so Telegram retries instead of silent loss
  */
 export function createTelegramWebhookHandler(deps: WebhookDeps) {
   const { bot, supabase, secretToken } = deps;
+  const takeoverAfterMs = deps.takeoverAfterMs ?? DEFAULT_TAKEOVER_MS;
+  let initPromise: Promise<unknown> | null = null;
+  const ensureInit = () => (initPromise ??= bot.init());
+
+  async function process(updateId: number, update: unknown, res: WebhookResponse): Promise<void> {
+    try {
+      await ensureInit();
+      await bot.handleUpdate(update as Parameters<Bot['handleUpdate']>[0]);
+      await supabase
+        .from('processed_updates')
+        .update({ status: 'done', finished_at: new Date().toISOString() })
+        .eq('update_id', updateId);
+      res.status(200).end();
+    } catch (e) {
+      console.error('[webhook] update processing failed:', e);
+      await supabase
+        .from('processed_updates')
+        .update({ status: 'failed', finished_at: new Date().toISOString() })
+        .eq('update_id', updateId);
+      res.status(500).end();
+    }
+  }
 
   return async function telegramWebhookHandler(req: WebhookRequest, res: WebhookResponse): Promise<void> {
-    // Validate the secret token configured via setWebhook(secret_token=...).
-    if (secretToken) {
-      const header = req.headers['x-telegram-bot-api-secret-token'];
-      if (header !== secretToken) {
-        res.status(401).end();
-        return;
-      }
-    } else {
-      console.warn('[webhook] TELEGRAM_WEBHOOK_SECRET is not set; skipping secret-token validation');
+    // Fail closed: without the shared secret there is no way to authenticate Telegram.
+    const header = req.headers['x-telegram-bot-api-secret-token'];
+    if (!secretToken || header !== secretToken) {
+      res.status(401).end();
+      return;
     }
 
+    // Validate the update shape before any side effect: an object with a
+    // safe-integer update_id. Anything else is acked and ignored.
     const update = req.body as { update_id?: unknown } | undefined | null;
-    if (!update || typeof update.update_id !== 'number') {
-      // Not a Telegram update (probe, health check, malformed body): ack and ignore.
+    if (!update || typeof update !== 'object' || !Number.isSafeInteger(update.update_id) || (update.update_id as number) < 0) {
       res.status(200).end();
       return;
     }
-    const updateId = update.update_id;
+    const updateId = update.update_id as number;
 
-    // Idempotency gate: first delivery inserts, retries conflict.
     const { error: insertError } = await supabase
       .from('processed_updates')
-      .insert({ update_id: updateId });
+      .insert({ update_id: updateId, status: 'processing', started_at: new Date().toISOString() });
 
-    if (insertError) {
-      if ((insertError as { code?: string }).code === '23505') {
-        // Duplicate delivery: ack without reprocessing.
-        res.status(200).end();
-        return;
-      }
-      // Transient DB failure: 500 so Telegram retries instead of silently dropping.
+    if (!insertError) {
+      await process(updateId, update, res);
+      return;
+    }
+
+    if ((insertError as { code?: string }).code !== '23505') {
       console.error('[webhook] processed_updates insert failed:', insertError);
       res.status(500).end();
       return;
     }
 
-    try {
-      await bot.handleUpdate(update as Parameters<Bot['handleUpdate']>[0]);
-      res.status(200).end();
-    } catch (e) {
-      console.error('[webhook] update processing failed:', e);
-      // Allow Telegram's retry to reprocess: remove the dedupe marker.
-      const { error: deleteError } = await supabase
-        .from('processed_updates')
-        .delete()
-        .eq('update_id', updateId);
-      if (deleteError) {
-        console.error('[webhook] failed to clear dedupe marker; retry will be skipped:', deleteError);
-      }
+    // Duplicate delivery: decide from the recorded state.
+    const { data: existing, error: selectError } = await supabase
+      .from('processed_updates')
+      .select('update_id, status, started_at')
+      .eq('update_id', updateId)
+      .single();
+
+    if (selectError || !existing) {
+      console.error('[webhook] processed_updates lookup failed:', selectError);
       res.status(500).end();
+      return;
     }
+
+    const row = existing as UpdateRow;
+    if (row.status === 'done') {
+      res.status(200).end();
+      return;
+    }
+
+    const stale = Date.now() - new Date(row.started_at).getTime() > takeoverAfterMs;
+    if (row.status === 'processing' && !stale) {
+      // Another invocation is actively handling this update.
+      res.status(200).end();
+      return;
+    }
+
+    // 'failed' (Telegram retry) or stale 'processing' (crashed invocation): take over.
+    const { error: claimError } = await supabase
+      .from('processed_updates')
+      .update({ status: 'processing', started_at: new Date().toISOString() })
+      .eq('update_id', updateId)
+      .eq('status', row.status)
+      .eq('started_at', row.started_at);
+
+    if (claimError) {
+      console.error('[webhook] failed to claim update for reprocessing:', claimError);
+      res.status(500).end();
+      return;
+    }
+
+    await process(updateId, update, res);
   };
 }
 

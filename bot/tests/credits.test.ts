@@ -10,8 +10,11 @@ function todayIST(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
-function fakeClient(tracked: { updated: any[] }) {
+// Fake supabase client: simulates the conditional update + re-read behavior.
+function fakeClient(opts: { rowsUpdated: number; freshRow?: any }) {
+  const tracked = { updated: [] as any[], rereads: 0 };
   return {
+    tracked,
     from(table: string) {
       assert.equal(table, 'users');
       return {
@@ -20,9 +23,23 @@ function fakeClient(tracked: { updated: any[] }) {
           const q: any = {
             eq() { return q; },
             is() { return q; },
-            then(resolve: any) { resolve({ error: null }); }
+            select(_cols: string) {
+              return Promise.resolve({
+                data: opts.rowsUpdated > 0 ? [{ daily_credits: payload.daily_credits, daily_credits_date: payload.daily_credits_date }] : [],
+                error: null
+              });
+            }
           };
           return q;
+        },
+        select(_cols: string) {
+          return {
+            eq() {
+              return {
+                async single() { return { data: opts.freshRow ?? null, error: opts.freshRow ? null : { code: 'x' } }; }
+              };
+            }
+          };
         }
       };
     }
@@ -30,35 +47,50 @@ function fakeClient(tracked: { updated: any[] }) {
 }
 
 async function main() {
-  // Free user, stale date -> reset to 3 with today's date
+  // Free user, stale date -> reset applied and confirmed by the returned row
   {
-    const tracked = { updated: [] as any[] };
-    const u = await applyLazyDailyReset('111', { daily_credits: 0, permanent_credits: 0, plan: 'free', premium_until: null, role: 'user', daily_credits_date: '2000-01-01' }, fakeClient(tracked));
+    const c = fakeClient({ rowsUpdated: 1 });
+    const u = await applyLazyDailyReset('111', { daily_credits: 0, permanent_credits: 0, plan: 'free', premium_until: null, role: 'user', daily_credits_date: '2000-01-01' }, c);
     assert.equal(u.daily_credits, 3);
     assert.equal(u.daily_credits_date, todayIST());
-    assert.equal(tracked.updated.length, 1);
+    assert.equal(c.tracked.updated.length, 1);
   }
   // Free user, already reset today -> untouched
   {
-    const tracked = { updated: [] as any[] };
-    const u = await applyLazyDailyReset('111', { daily_credits: 1, permanent_credits: 0, plan: 'free', premium_until: null, role: 'user', daily_credits_date: todayIST() }, fakeClient(tracked));
+    const c = fakeClient({ rowsUpdated: 0 });
+    const u = await applyLazyDailyReset('111', { daily_credits: 1, permanent_credits: 0, plan: 'free', premium_until: null, role: 'user', daily_credits_date: todayIST() }, c);
     assert.equal(u.daily_credits, 1);
-    assert.equal(tracked.updated.length, 0);
+    assert.equal(c.tracked.updated.length, 0);
   }
-  // Premium user -> untouched even with stale date
+  // Premium ACTIVE -> untouched even with stale date
   {
-    const tracked = { updated: [] as any[] };
+    const c = fakeClient({ rowsUpdated: 0 });
     const future = new Date(Date.now() + 86400000).toISOString();
-    const u = await applyLazyDailyReset('111', { daily_credits: 0, permanent_credits: 5, plan: 'ind_monthly', premium_until: future, role: 'user', daily_credits_date: '2000-01-01' }, fakeClient(tracked));
+    const u = await applyLazyDailyReset('111', { daily_credits: 0, permanent_credits: 5, plan: 'ind_monthly', premium_until: future, role: 'user', daily_credits_date: '2000-01-01' }, c);
     assert.equal(u.daily_credits, 0);
-    assert.equal(tracked.updated.length, 0);
+    assert.equal(c.tracked.updated.length, 0);
   }
-  // Free user, null date (pre-migration row) -> reset once
+  // Premium EXPIRED -> treated as free, daily credits reset
   {
-    const tracked = { updated: [] as any[] };
-    const u = await applyLazyDailyReset('111', { daily_credits: 2, permanent_credits: 0, plan: 'free', premium_until: null, role: 'user', daily_credits_date: null }, fakeClient(tracked));
+    const c = fakeClient({ rowsUpdated: 1 });
+    const past = new Date(Date.now() - 86400000).toISOString();
+    const u = await applyLazyDailyReset('111', { daily_credits: 0, permanent_credits: 5, plan: 'ind_monthly', premium_until: past, role: 'user', daily_credits_date: '2000-01-01' }, c);
     assert.equal(u.daily_credits, 3);
-    assert.equal(tracked.updated.length, 1);
+    assert.equal(c.tracked.updated.length, 1);
+  }
+  // Zero-row update (concurrent change) -> re-read fresh row, NEVER fabricate 3
+  {
+    const fresh = { daily_credits: 2, permanent_credits: 0, plan: 'free', premium_until: null, role: 'user', daily_credits_date: todayIST() };
+    const c = fakeClient({ rowsUpdated: 0, freshRow: fresh });
+    const u = await applyLazyDailyReset('111', { daily_credits: 0, permanent_credits: 0, plan: 'free', premium_until: null, role: 'user', daily_credits_date: '2000-01-01' }, c);
+    assert.equal(u.daily_credits, 2);
+    assert.equal(u.daily_credits_date, todayIST());
+  }
+  // Zero-row update AND failed re-read -> keep observed row (no fabrication)
+  {
+    const c = fakeClient({ rowsUpdated: 0, freshRow: null });
+    const u = await applyLazyDailyReset('111', { daily_credits: 0, permanent_credits: 0, plan: 'free', premium_until: null, role: 'user', daily_credits_date: '2000-01-01' }, c);
+    assert.equal(u.daily_credits, 0);
   }
   console.log('credits lazy-reset assertions passed');
 }

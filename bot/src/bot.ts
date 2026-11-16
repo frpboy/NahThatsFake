@@ -130,7 +130,7 @@ bot.use(async (ctx, next) => {
   // Fetch role and ban/throttle status in one go to prevent N+1 queries
   const { data } = await supabase
     .from('users')
-    .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until, consent_given, referral_code')
+    .select('role, plan, premium_until, is_banned, banned_reason, banned_until, is_throttled, throttled_until, consent_given, referral_code')
     .eq('telegram_user_id', user.id.toString())
     .maybeSingle();
 
@@ -141,6 +141,18 @@ bot.use(async (ctx, next) => {
   if (await isAdmin(user.id.toString(), (ctx as any).state.role)) return next();
 
   const now = new Date();
+
+  // Lazy premium downgrade (replaces the hourly check_expired_premium cron for
+  // state consistency): expired premium users are treated and stored as free.
+  if (data && data.plan && data.plan !== 'free' && data.premium_until && new Date(data.premium_until) < now) {
+    await supabase.from('users').update({
+      plan: 'free',
+      premium_until: null,
+      updated_at: now.toISOString()
+    }).eq('telegram_user_id', user.id.toString()).eq('plan', data.plan);
+    data.plan = 'free';
+    data.premium_until = null;
+  }
 
   // Check Ban
   if (data && data.is_banned) {

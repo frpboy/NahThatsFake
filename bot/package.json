@@ -12,7 +12,8 @@
     "test:markdown": "ts-node --project tsconfig.test.json tests/markdown.test.ts",
     "test:urlscanner": "ts-node --project tsconfig.test.json tests/urlscanner.test.ts",
     "test:webhook": "ts-node --project tsconfig.test.json tests/webhook.test.ts",
-    "test:credits": "ts-node --project tsconfig.test.json tests/credits.test.ts"
+    "test:credits": "ts-node --project tsconfig.test.json tests/credits.test.ts",
+    "test:rateLimit": "ts-node --project tsconfig.test.json tests/rateLimit.test.ts"
   },
   "keywords": [
     "telegram",

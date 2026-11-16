@@ -3,30 +3,21 @@ import { supabase } from '../supabase';
 import { flagUser } from '../services/abuseDetection';
 import { config } from '../config';
 
-const rateLimits = new Map<string, { count: number; windowStart: number }>();
-const WINDOW_MS = 60000; // 1 minute
-const MAX_TRACKED_USERS = 100000;
-const CLEANUP_EVERY_REQUESTS = 100;
-let requestsSinceCleanup = 0;
-
-function cleanupRateLimits(now: number) {
-  // Periodic cleanup avoids scanning the map on every update.
-  requestsSinceCleanup = 0;
-  for (const [userId, limit] of rateLimits) {
-    if (now - limit.windowStart > WINDOW_MS) rateLimits.delete(userId);
-  }
-
-  // Bound memory if a burst of unique user IDs arrives.
-  while (rateLimits.size >= MAX_TRACKED_USERS) {
-    const oldestUserId = rateLimits.keys().next().value;
-    if (oldestUserId === undefined) break;
-    rateLimits.delete(oldestUserId);
-  }
-}
 const MAX_REQUESTS = 10;
 const ABUSE_TRIGGER_THRESHOLD = 20; // 2x limit -> flag
 
-export async function rateLimitMiddleware(ctx: Context, next: NextFunction) {
+/**
+ * DB-backed fixed-minute-window rate limiting (rate_limit_hit RPC): counts
+ * are shared across serverless instances, unlike the previous per-process
+ * in-memory Map. Window boundaries are fixed minutes, so a burst split across
+ * a boundary is counted separately - slightly looser than a sliding window.
+ * Fails open when the counter store errors so a transient DB issue does not
+ * block all bot traffic (every other bot feature depends on the same store).
+ */
+type RpcClient = Pick<typeof supabase, 'rpc' | 'from'>;
+
+export function createRateLimitMiddleware(client: RpcClient) {
+  return async function rateLimitMiddleware(ctx: Context, next: NextFunction) {
   const user = ctx.from;
   if (!user) return next();
 
@@ -37,43 +28,38 @@ export async function rateLimitMiddleware(ctx: Context, next: NextFunction) {
     return next();
   }
 
-  const now = Date.now();
-  requestsSinceCleanup++;
-  if (requestsSinceCleanup >= CLEANUP_EVERY_REQUESTS || rateLimits.size >= MAX_TRACKED_USERS) {
-    cleanupRateLimits(now);
-  }
-  const userLimit = rateLimits.get(telegramUserId) || { count: 0, windowStart: now };
+  const { data: count, error } = await client.rpc('rate_limit_hit', {
+    p_telegram_user_id: telegramUserId
+  });
 
-  if (now - userLimit.windowStart > WINDOW_MS) {
-    // Reset window
-    userLimit.count = 1;
-    userLimit.windowStart = now;
-  } else {
-    userLimit.count++;
+  if (error) {
+    console.error('[rateLimit] counter unavailable, allowing request:', error);
+    return next();
   }
 
-  rateLimits.set(telegramUserId, userLimit);
-
-  if (userLimit.count > MAX_REQUESTS) {
+  if (typeof count === 'number' && count > MAX_REQUESTS) {
     // If they go way over, flag them
-    if (userLimit.count === ABUSE_TRIGGER_THRESHOLD) {
-       const { data: userData } = await supabase
-         .from('users')
-         .select('id')
-         .eq('telegram_user_id', telegramUserId)
-         .single();
-         
-       if (userData) {
-         await flagUser(userData.id, 'rate_limit_exceeded', {
-           count: userLimit.count,
-           limit: MAX_REQUESTS
-         });
-       }
+    if (count === ABUSE_TRIGGER_THRESHOLD) {
+      const { data: userData } = await client
+        .from('users')
+        .select('id')
+        .eq('telegram_user_id', telegramUserId)
+        .single();
+
+      if (userData) {
+        await flagUser(userData.id, 'rate_limit_exceeded', {
+          count,
+          limit: MAX_REQUESTS
+        });
+      }
     }
-    
+
     // Silent fail
-    return; 
+    return;
   }
 
   await next();
+  };
 }
+
+export const rateLimitMiddleware = createRateLimitMiddleware(supabase);

@@ -51,7 +51,7 @@ export async function processLinkCheck(ctx: Context) {
       }
     }
 
-    const creditSourceRaw = isImpersonating ? 'owner' : await consumeCredit(actingTelegramUserId, 'daily', dbUser);
+    const creditSourceRaw = isImpersonating ? 'owner' : await consumeCredit(actingTelegramUserId, 'daily', dbUser, ctx.update?.update_id);
     if (!creditSourceRaw) {
       await ctx.reply(
 `🚫 *No credits left*

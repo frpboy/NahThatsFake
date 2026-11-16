@@ -237,6 +237,12 @@ app.get('/api/user/profile', validateTelegramData, async (req, res) => {
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    // Display effective plan: expired premium reads as free even before the
+    // next lazy downgrade writes it back (bot middleware / consume_credit_atomic).
+    if (user.plan !== 'free' && user.premium_until && new Date(user.premium_until) < new Date()) {
+      user.plan = 'free';
+    }
+
     const checkCount = user.checks && user.checks.length > 0 ? user.checks[0].count : 0;
     delete user.checks; // Maintain flat API response shape
 
@@ -571,7 +577,7 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
 // Dedupe + secret validation live in bot/src/webhook.ts.
 app.post('/api/telegram', async (req, res) => {
   try {
-    const { telegramWebhookHandler } = require('../bot/dist/webhook.js');
+    const { telegramWebhookHandler } = require('./bot-dist/webhook.js');
     await telegramWebhookHandler(req, res);
   } catch (e) {
     console.error('[telegram-webhook] unhandled error:', e);
