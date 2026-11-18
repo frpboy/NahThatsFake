@@ -10,7 +10,8 @@
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
     "test:markdown": "ts-node --project tsconfig.test.json tests/markdown.test.ts",
-    "test:urlscanner": "ts-node --project tsconfig.test.json tests/urlscanner.test.ts"
+    "test:urlscanner": "ts-node --project tsconfig.test.json tests/urlscanner.test.ts",
+    "test:payment-shutdown": "ts-node --project tsconfig.test.json tests/payment-shutdown.test.ts"
   },
   "keywords": [
     "telegram",

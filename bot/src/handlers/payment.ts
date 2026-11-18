@@ -14,7 +14,7 @@ const PLANS: Record<string, { days?: number; credits?: number; name: string }> =
 
 // Handle pre-checkout query (must be answered within 10 seconds)
 export async function handlePreCheckout(ctx: Context) {
-  await ctx.answerPreCheckoutQuery(true);
+  await ctx.answerPreCheckoutQuery(false, 'Purchases are no longer available.');
 }
 
 // Handle successful payment

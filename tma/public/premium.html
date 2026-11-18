@@ -21,7 +21,7 @@
             <p style="font-size: 40px; margin: 10px 0;" aria-hidden="true">⭐</p>
             <p><strong>Purchases are no longer available.</strong></p>
             <p>New premium plans and credit packs can't be bought anymore.</p>
-            <p style="opacity: 0.8;">If you've already paid, your premium stays active until its current end date, and your purchased credits remain available.</p>
+            <p style="opacity: 0.8;">Existing Premium plans stay active until their current end date. Any remaining purchased credits are still available.</p>
         </div>
     </div>
 
@@ -31,7 +31,15 @@
         if (tg) {
             tg.ready();
             tg.expand();
-            if (tg.colorScheme === 'dark') document.body.classList.add('dark');
+
+            const applyTheme = () => {
+                document.body.classList.toggle('dark', tg.colorScheme === 'dark');
+            };
+
+            applyTheme();
+            if (typeof tg.onEvent === 'function') {
+                tg.onEvent('themeChanged', applyTheme);
+            }
         }
     </script>
 </body>

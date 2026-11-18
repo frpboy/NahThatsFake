@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const request = require('supertest');
 
 process.env.NODE_ENV = 'production';
@@ -104,4 +105,104 @@ test('bot keeps successful-payment reconciliation without advertising new purcha
   assert.match(paymentHandler, /fulfill_payment/);
   assert.match(botIndex, /Purchases are no longer available/);
   assert.doesNotMatch(botIndex, /Pay with UPI, cards, or Telegram Stars|Upgrade Now|Go Premium/);
+});
+
+test('Premium and purchased-credit entitlements are described separately', () => {
+  const premiumHtml = fs.readFileSync(path.join(__dirname, '../public/premium.html'), 'utf8');
+  const appJs = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8');
+
+  const premiumStatement = 'Existing Premium plans stay active until their current end date.';
+  const creditStatement = 'Any remaining purchased credits are still available.';
+
+  assert.ok(premiumHtml.includes(premiumStatement));
+  assert.ok(premiumHtml.includes(creditStatement));
+  assert.ok(appJs.includes(premiumStatement));
+  assert.ok(appJs.includes(creditStatement));
+  assert.doesNotMatch(premiumHtml, /If you've already paid, your premium stays active/);
+});
+
+test('dashboard action no longer advertises unavailable purchases', () => {
+  const dashboardHtml = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+
+  assert.match(dashboardHtml, /title="View Premium availability and existing entitlements"/);
+  assert.match(dashboardHtml, /> Premium information<\/button>/);
+  assert.doesNotMatch(dashboardHtml, /Upgrade to Premium/);
+});
+
+test('Telegram Web App API 6.1 uses a fallback while 6.2 uses showAlert', () => {
+  const appJs = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8');
+
+  function runUpgrade(version) {
+    const messages = [];
+    const telegram = {
+      version,
+      showAlert: message => messages.push({ source: 'telegram', message }),
+      HapticFeedback: null
+    };
+    const context = {
+      window: {
+        Telegram: { WebApp: telegram },
+        alert: message => messages.push({ source: 'browser', message })
+      },
+      document: { addEventListener() {} },
+      navigator: {},
+      console
+    };
+
+    vm.runInNewContext(appJs, context);
+    context.upgradePremium();
+    return messages;
+  }
+
+  const legacy = runUpgrade('6.1');
+  assert.equal(legacy[0].source, 'browser');
+  assert.match(legacy[0].message, /Purchases are no longer available/);
+  assert.match(legacy[0].message, /Existing Premium plans stay active/);
+  assert.match(legacy[0].message, /purchased credits are still available/);
+
+  const current = runUpgrade('6.2');
+  assert.equal(current[0].source, 'telegram');
+  assert.match(current[0].message, /Purchases are no longer available/);
+});
+
+test('Premium page follows Telegram theme changes in both directions', () => {
+  const premiumHtml = fs.readFileSync(path.join(__dirname, '../public/premium.html'), 'utf8');
+  const inlineScript = premiumHtml.match(/<script>\s*([\s\S]*?)<\/script>/);
+
+  assert.ok(inlineScript, 'Premium page should contain its Telegram initialization script');
+
+  const events = {};
+  const body = {
+    isDark: false,
+    classList: {
+      toggle(name, force) {
+        assert.equal(name, 'dark');
+        body.isDark = force;
+      }
+    }
+  };
+  const telegram = {
+    colorScheme: 'dark',
+    ready() {},
+    expand() {},
+    onEvent(name, callback) {
+      events[name] = callback;
+    }
+  };
+
+  vm.runInNewContext(inlineScript[1], {
+    window: { Telegram: { WebApp: telegram } },
+    document: { body }
+  });
+
+  assert.equal(body.isDark, true);
+  assert.equal(typeof events.themeChanged, 'function');
+
+  telegram.colorScheme = 'light';
+  events.themeChanged();
+  assert.equal(body.isDark, false);
+
+  telegram.colorScheme = 'dark';
+  events.themeChanged();
+  assert.equal(body.isDark, true);
 });
