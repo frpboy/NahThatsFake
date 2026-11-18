@@ -31,13 +31,13 @@ export async function handleLinkGroup(ctx: Context) {
       
 Your current plan: ${userData.plan}
 
-Upgrade to a Group Plan to protect this chat.`);
+Group Plans are no longer available for purchase.`);
       return;
     }
 
     // 3. Check Expiry
     if (new Date(userData.premium_until) < new Date()) {
-      await ctx.reply('❌ Your Group Plan has expired. Please renew.');
+      await ctx.reply('❌ Your Group Plan has expired.');
       return;
     }
 

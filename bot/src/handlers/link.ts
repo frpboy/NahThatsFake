@@ -43,8 +43,7 @@ export async function processLinkCheck(ctx: Context) {
         await ctx.reply(
 `🚫 *No credits left*
 
-⭐ Upgrade to Premium for unlimited access
-🎁 Or use /refer to earn credits`,
+🎁 Use /refer to earn free credits`,
           { parse_mode: 'Markdown' }
         );
         return;
@@ -56,8 +55,7 @@ export async function processLinkCheck(ctx: Context) {
       await ctx.reply(
 `🚫 *No credits left*
 
-⭐ Upgrade to Premium for unlimited access
-🎁 Or use /refer to earn credits`,
+🎁 Use /refer to earn free credits`,
         { parse_mode: 'Markdown' }
       );
       return;

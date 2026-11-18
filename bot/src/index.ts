@@ -483,22 +483,8 @@ bot.command('history', async (ctx) => {
 
 // Command: /premium
 bot.command('premium', async (ctx) => {
-  await ctx.reply(`⭐ *Go Premium*
-
-Unlock unlimited checks and advanced features:
-
-💎 Individual Weekly: ₹29 / 150 ⭐
-💎 Individual Monthly: ₹99 / 500 ⭐
-💎 Individual Annual: ₹799 (33% off)
-💎 Group Monthly: ₹299
-
-Pay with UPI, cards, or Telegram Stars!`, {
-    parse_mode: 'Markdown',
-    reply_markup: {
-      inline_keyboard: [[
-        { text: 'Upgrade Now', web_app: { url: `${config.TMA_URL}/premium.html` } }
-      ]]
-    }
+  await ctx.reply("⭐ *Premium*\n\nPurchases are no longer available. New premium plans and credit packs can't be bought anymore.\n\nIf you already paid, your premium stays active until its end date, and your purchased credits remain available.", {
+    parse_mode: 'Markdown'
   });
 });
 
@@ -1328,8 +1314,8 @@ bot.on('my_chat_member', async (ctx) => {
     await ctx.reply(
 `⚠️ *Group Protection Disabled*
 
-This group requires a premium plan.
-Contact admin or upgrade to enable protection.`,
+This group requires an active premium plan.
+Contact the group administrator to enable protection.`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -1366,7 +1352,7 @@ Commands:
 /earn – Sponsored message 
 /refer – Earn free credits 
 /history – Recent checks 
-/premium – Upgrade plan 
+/premium – Premium info (purchases unavailable) 
 
 ⚠️ Always verify critical info yourself.`, { parse_mode: 'Markdown' });
 });
@@ -1576,27 +1562,13 @@ Use /refer to earn more credits!`, { parse_mode: 'Markdown' });
   }
   
   if (text.includes('Premium')) {
-    // Trigger /premium logic
-    await ctx.reply(`⭐ *Go Premium*
-
-Unlock unlimited checks and advanced features:
-
-💎 Individual Weekly: ₹29 / 150 ⭐
-💎 Individual Monthly: ₹99 / 500 ⭐
-💎 Individual Annual: ₹799 (33% off)
-💎 Group Monthly: ₹299
-
-Pay with UPI, cards, or Telegram Stars!`, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: 'Upgrade Now', web_app: { url: `${config.TMA_URL}/premium.html` } }
-        ]]
-      }
+    // Trigger /premium information without exposing purchase options.
+    await ctx.reply("⭐ *Premium*\n\nPurchases are no longer available. New premium plans and credit packs can't be bought anymore.\n\nIf you already paid, your premium stays active until its end date, and your purchased credits remain available.", {
+      parse_mode: 'Markdown'
     });
     return;
   }
-  
+
   if (text.includes('Bot Info')) {
     // Trigger /help logic
     await ctx.reply(`🧠 *Nah That’s Fake – Help*
@@ -1609,7 +1581,7 @@ Commands:
 /history – Last checks
 /earn – Sponsored message
 /refer – Earn free credits
-/premium – Upgrade plan
+/premium – Premium info (purchases unavailable)
 /feedback – Submit suggestion/bug
 
 ⚠️ Always verify important info yourself.`, { parse_mode: 'Markdown' });
@@ -1748,7 +1720,7 @@ bot.start({
       { command: 'credits', description: 'View your credits' },
       { command: 'history', description: 'Recent checks' },
       { command: 'refer', description: 'Invite friends and earn credits' },
-      { command: 'premium', description: 'Upgrade to premium' },
+      { command: 'premium', description: 'Premium info (purchases unavailable)' },
       { command: 'feedback', description: 'Submit suggestion/bug' },
     ]);
   }
