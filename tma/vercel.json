@@ -9,5 +9,6 @@
       "source": "/(.*)",
       "destination": "/public/$1"
     }
-  ]
+  ],
+  "buildCommand": "cd ../bot && npm install && npx tsc -p tsconfig.json --outDir ../tma/bot-dist"
 }
