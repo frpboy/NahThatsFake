@@ -1,3 +1,4 @@
+import { reportError } from '../monitoring';
 import cron from 'node-cron';
 import { supabase } from '../supabase';
 
@@ -10,7 +11,7 @@ export function startScheduler() {
     try {
       // 1. Expired Premium
       const { error } = await supabase.rpc('check_expired_premium');
-      if (error) console.error('Expiry check failed:', error);
+      if (error) { await reportError('bot.scheduler.expiry'); console.error('Expiry check failed:', error); }
       
       // 2. Expired Bans (Clean up DB state)
       const now = new Date().toISOString();
@@ -29,6 +30,7 @@ export function startScheduler() {
 
       console.log('✅ Hourly checks completed');
     } catch (e) {
+      await reportError('bot.scheduler.hourly');
       console.error('Scheduler error:', e);
     }
   });
@@ -57,6 +59,7 @@ export function startScheduler() {
 
       console.log('✅ Daily counters reset');
     } catch (e) {
+      await reportError('bot.scheduler.daily');
       console.error('Daily reset error:', e);
     }
   });

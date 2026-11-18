@@ -1,3 +1,4 @@
+import './monitoring';
 import { Bot, Context } from 'grammy';
 import { supabase } from './supabase';
 import { generateReferralCode } from './utils/referral';
