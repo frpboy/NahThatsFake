@@ -122,9 +122,35 @@ function adminBroadcast() {
     });
 }
 
+function isTelegramWebAppVersionAtLeast(requiredVersion) {
+    const parseVersion = (version) => String(version || '0')
+        .split('.')
+        .map(part => Number.parseInt(part, 10) || 0);
+    const current = parseVersion(tg.version);
+    const required = parseVersion(requiredVersion);
+
+    for (let index = 0; index < Math.max(current.length, required.length); index += 1) {
+        const currentPart = current[index] || 0;
+        const requiredPart = required[index] || 0;
+        if (currentPart !== requiredPart) return currentPart > requiredPart;
+    }
+
+    return true;
+}
+
+function showAppAlert(message) {
+    if (typeof tg.showAlert === 'function' && isTelegramWebAppVersionAtLeast('6.2')) {
+        tg.showAlert(message);
+        return;
+    }
+
+    // Telegram Web App API 6.1 and earlier do not provide showAlert.
+    window.alert(message);
+}
+
 function adminViewLogs() {
     hapticFeedback('light');
-    tg.showAlert('Audit logs viewer coming soon!');
+    showAppAlert('Audit logs viewer coming soon!');
 }
 
 // Apply Telegram theme
@@ -431,7 +457,7 @@ function renderChecks() {
 function viewCheckDetails(checkId) {
     hapticFeedback('light');
     // Future: Show detailed modal or navigate to detail view
-    tg.showAlert('Detailed report view coming soon!');
+    showAppAlert('Detailed report view coming soon!');
 }
 
 // Load more checks
@@ -480,16 +506,14 @@ function shareReferral() {
         });
     } else {
         navigator.clipboard.writeText(shareText);
-        tg.showAlert('Referral link copied to clipboard!');
+        showAppAlert('Referral link copied to clipboard!');
     }
 }
 
-// Upgrade to premium
+// Premium information (purchases unavailable)
 function upgradePremium() {
     hapticFeedback('light');
-    // Use openInvoice if we have a direct invoice link, or navigate to a premium page
-    // For now, open the bot with /premium command
-    tg.openTelegramLink(`https://t.me/NahThatsFakeBot?start=premium`);
+    showAppAlert('Purchases are no longer available. Existing Premium plans stay active until their current end date. Any remaining purchased credits are still available.');
 }
 
 // Open bot

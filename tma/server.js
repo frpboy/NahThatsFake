@@ -321,38 +321,10 @@ function getPlanDetails(planId) {
 }
 
 // 1. Create Razorpay Order
+// New purchases were disabled on 2026-11-16. Keep verification and webhook
+// routes below so payments already in flight can still be reconciled.
 app.post('/api/payment/create-razorpay-order', validateTelegramData, async (req, res) => {
-  const { planId } = req.body;
-  const userId = req.telegramUser ? req.telegramUser.id : null;
-  if (!userId) return res.status(400).json({ error: 'Missing userId' });
-  
-  const planDetails = getPlanDetails(planId);
-  if (!planDetails) return res.status(400).json({ error: 'Invalid plan' });
-
-  try {
-    const options = {
-      amount: planDetails.amount, // derive amount from trusted server-side config
-      currency: "INR",
-      receipt: `receipt_${userId}_${Date.now()}`,
-      notes: {
-        planId: planId,
-        telegramUserId: userId
-      }
-    };
-    
-    const order = await razorpay.orders.create(options);
-    
-    // Return order details + key_id for frontend
-    res.json({
-      id: order.id,
-      amount: order.amount,
-      keyId: process.env.RAZORPAY_KEY_ID
-    });
-    
-  } catch (error) {
-    console.error('Razorpay create order error:', error);
-    res.status(500).json({ error: 'Failed to create order' });
-  }
+  return res.status(410).json({ error: 'Payments are no longer accepted' });
 });
 
 // 2. Verify Razorpay Payment
@@ -431,63 +403,11 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
   }
 });
 
-// 3. Create Stars Invoice (Proxy to Bot)
+// 3. Create Stars Invoice
+// New purchases were disabled on 2026-11-16. The successful-payment handler
+// remains available to reconcile invoices that were already issued.
 app.post('/api/payment/create-stars-invoice', validateTelegramData, async (req, res) => {
-  const { planId } = req.body;
-  const userId = req.telegramUser ? req.telegramUser.id : null;
-  if (!userId) return res.status(400).json({ error: 'Missing userId' });
-  const BOT_TOKEN = process.env.BOT_TOKEN;
-
-  if (!BOT_TOKEN) {
-    return res.status(500).json({ error: 'Bot token not configured' });
-  }
-
-  const starsAmountMap = {
-    'ind_weekly': 150,
-    'ind_monthly': 500,
-    'ind_annual': 4000,
-    'credits_50': 250,
-    'credits_100': 450
-  };
-
-  const amount = starsAmountMap[planId];
-  if (!amount) return res.status(400).json({ error: 'Invalid plan' });
-
-  try {
-    let title = 'Premium';
-    let description = 'Subscription';
-    
-    if (planId === 'ind_weekly') { title = 'Weekly Pass'; description = '7 Days Premium'; }
-    if (planId === 'ind_monthly') { title = 'Monthly Premium'; description = '30 Days Premium'; }
-    if (planId === 'ind_annual') { title = 'Annual Premium'; description = '365 Days Premium'; }
-    if (planId === 'credits_50') { title = '50 Credits'; description = '50 Permanent Checks'; }
-    if (planId === 'credits_100') { title = '100 Credits'; description = '100 Permanent Checks'; }
-    
-    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title,
-        description,
-        payload: JSON.stringify({ userId, planId, type: 'stars' }), 
-        provider_token: "", // Empty for Stars
-        currency: "XTR",
-        prices: [{ label: title, amount: amount }] // derive amount from trusted mapping
-      })
-    });
-
-    const data = await response.json();
-    
-    if (data.ok) {
-      res.json({ invoiceLink: data.result });
-    } else {
-      console.error('Telegram API Error:', data);
-      res.status(500).json({ error: 'Failed to create invoice link' });
-    }
-  } catch (error) {
-    console.error('Create Invoice Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  return res.status(410).json({ error: 'Payments are no longer accepted' });
 });
 
 // 4. Razorpay Webhook (Server-to-Server)
