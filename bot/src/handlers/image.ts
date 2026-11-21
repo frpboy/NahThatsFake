@@ -36,7 +36,7 @@ export async function processImageCheck(ctx: Context) {
 
     // Check credits
     if (isImpersonating) {
-      const credits = await checkCredits(actingTelegramUserId);
+      const credits = await checkCredits(actingTelegramUserId, dbUser);
       if (!credits.isPremium && credits.dailyRemaining <= 0 && credits.permanentCredits <= 0) {
         await ctx.reply(
 `🚫 *No credits left*
