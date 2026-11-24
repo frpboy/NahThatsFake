@@ -20,6 +20,58 @@ const PORT = process.env.PORT || 3000;
 
 app.disable('x-powered-by');
 
+// Fail fast with a clear message when required configuration is missing.
+// Only variable names are reported, never their values.
+const requiredEnvVars = ['SUPABASE_URL', 'SUPABASE_ANON_KEY'];
+const missingEnvVars = requiredEnvVars.filter((name) => !process.env[name]);
+if (missingEnvVars.length > 0) {
+  throw new Error(
+    `Missing required environment variables: ${missingEnvVars.join(', ')}. ` +
+    'Copy .env.example to .env and fill in every required value.'
+  );
+}
+
+// Security headers. frame-ancestors still allows embedding inside
+// Telegram (web.telegram.org / telegram.org) while blocking other sites.
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader(
+    'Content-Security-Policy',
+    "frame-ancestors 'self' https://web.telegram.org https://telegram.org"
+  );
+  next();
+});
+
+// Lightweight in-memory rate limiting for API routes. Limits can be tuned
+// with RATE_LIMIT_WINDOW_MS / RATE_LIMIT_MAX_REQUESTS (see .env.example).
+const rateLimitWindowMs = Number(process.env.RATE_LIMIT_WINDOW_MS) || 60000;
+const rateLimitMaxRequests = Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 100;
+const rateLimitHits = new Map();
+app.use('/api', (req, res, next) => {
+  const now = Date.now();
+  const key = req.ip || 'unknown';
+  const entry = rateLimitHits.get(key);
+  if (!entry || now - entry.windowStart >= rateLimitWindowMs) {
+    rateLimitHits.set(key, { windowStart: now, count: 1 });
+    return next();
+  }
+  entry.count += 1;
+  if (entry.count > rateLimitMaxRequests) {
+    return res.status(429).json({ error: 'Too many requests, please try again later' });
+  }
+  return next();
+});
+// Periodically drop expired rate-limit windows so the map cannot grow forever.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitHits) {
+    if (now - entry.windowStart >= rateLimitWindowMs) rateLimitHits.delete(key);
+  }
+}, rateLimitWindowMs).unref();
+
 // Middleware
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://nahthatsfake.vercel.app').split(',');
 app.use(cors({
@@ -34,6 +86,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'X-Telegram-Init-Data']
 }));
 app.use(express.json({
+  limit: '100kb',
   verify: (req, res, buf) => {
     req.rawBody = buf;
   }
@@ -57,11 +110,22 @@ function getPaymentSupabase() {
   return paymentSupabase;
 }
 
-// Razorpay client
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
-});
+// Razorpay client, created lazily. New purchases are disabled, so the
+// server must start and serve the free app without Razorpay credentials;
+// only the legacy verification/webhook reconciliation routes need it.
+let razorpayClient;
+function getRazorpay() {
+  if (!razorpayClient) {
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      throw new Error('Razorpay is not configured');
+    }
+    razorpayClient = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET
+    });
+  }
+  return razorpayClient;
+}
 
 // Telegram Init Data Validation Middleware
 let cachedSecretKey = null;
@@ -346,7 +410,7 @@ app.post('/api/payment/verify-razorpay', validateTelegramData, async (req, res) 
     // Payment verified
     try {
       // 🛡️ Sentinel: Fetch authentic order details from Razorpay to prevent parameter spoofing
-      const razorpayOrder = await razorpay.orders.fetch(razorpay_order_id);
+      const razorpayOrder = await getRazorpay().orders.fetch(razorpay_order_id);
       if (!razorpayOrder || !razorpayOrder.notes) {
         throw new Error('Invalid order metadata from Razorpay');
       }
@@ -487,8 +551,31 @@ app.post('/api/payment/razorpay-webhook', async (req, res) => {
   }
 });
 
-// Start server
-if (process.env.NODE_ENV !== 'production') {
+// API 404 handler: unknown API routes get JSON, not the SPA or an HTML error.
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Global error handler. Details are logged server-side only; clients get a
+// generic message so stack traces and internals are never leaked.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (err && err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: 'Origin not allowed' });
+  }
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON body' });
+  }
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request body too large' });
+  }
+  console.error('Unhandled error:', err);
+  return res.status(500).json({ error: 'Internal server error' });
+});
+
+// Start the server only when run directly (node server.js). When the app is
+// imported, e.g. by Vercel (tma/api/index.js) or by tests, it must not listen.
+if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
