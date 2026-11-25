@@ -67,8 +67,11 @@ export async function processLinkCheck(ctx: Context) {
 
     // Normalize URL for hashing
     const normalizedUrl = normalizeUrl(url);
-    // Version the cache key so legacy results created by fail-open provider handling are not reused.
-    const urlHash = crypto.createHash('sha256').update(`urlscanner-v2:${normalizedUrl}`).digest('hex');
+    // Version the cache key so legacy results are not reused across
+    // detection-behaviour changes: v2 predates the PR #459 coverage rules,
+    // and v3 supersedes v2 entries written while VirusTotal verdicts could
+    // still come from incomplete analyses (fixed in PR #462).
+    const urlHash = crypto.createHash('sha256').update(`urlscanner-v3:${normalizedUrl}`).digest('hex');
 
     // Check cache first
     const { data: cached } = await supabase
