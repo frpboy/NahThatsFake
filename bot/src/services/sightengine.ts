@@ -74,6 +74,12 @@ export async function detectDeepfake(imageBuffer: Buffer): Promise<{
 
   } catch (error) {
     if (axios.isAxiosError(error)) {
+      // Preserve timeouts as timeouts: callers report them as an
+      // inconclusive image check, not as a generic failure or a verdict.
+      if (error.code === 'ECONNABORTED' || /timeout/i.test(error.message)) {
+        throw new Error('Image analysis timed out');
+      }
+
       const status = error.response?.status;
       
       console.error('Sightengine API error:', {
