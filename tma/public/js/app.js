@@ -98,12 +98,18 @@ async function checkAdmin() {
 
 // Load admin stats
 function loadAdminStats() {
+    // A whole-request failure must not leave a stale or default value on
+    // the revenue tile: dash it, like the count tiles' initial state.
+    const dashRevenue = () => {
+        const el = document.getElementById('admin-revenue-inr');
+        if (el) el.textContent = '-';
+    };
     fetch('/api/admin/stats', {
         headers: { 'X-Telegram-Init-Data': tg.initData }
     })
     .then(r => r.json())
     .then(d => {
-        if (d.error) return;
+        if (d.error) { dashRevenue(); return; }
         // The endpoint marks failed sub-queries as null (see `errors` in
         // the response): dash only those tiles, show real values — 0
         // included — for the rest.
@@ -119,7 +125,7 @@ function loadAdminStats() {
         const starsEl = document.getElementById('admin-revenue-stars');
         if (starsEl) starsEl.textContent = d.revenue ? (d.revenue.stars || 0) : '-';
     })
-    .catch(e => console.error('Admin stats error:', e));
+    .catch(e => { console.error('Admin stats error:', e); dashRevenue(); });
 }
 
 function adminBroadcast() {

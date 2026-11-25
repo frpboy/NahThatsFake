@@ -82,6 +82,9 @@ test('stats endpoint settles sub-queries independently and names failures', () =
   assert.match(block, /Stats sub-query failed/);
   assert.doesNotMatch(block, /throw new Error\('Database error'\)/);
   assert.match(block, /errors/);
+  // Each sub-query carries its own time bound so a hung connection
+  // cannot stall the healthy results indefinitely.
+  assert.equal((block.match(/abortSignal\(statsSignal\(\)\)/g) || []).length, 4);
 });
 
 test('stats endpoint keeps its auth gates', () => {
@@ -95,4 +98,18 @@ test('frontend dashes only null (failed) tiles and tolerates the missing stars e
   const appJs = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8');
   assert.match(appJs, /value === null \|\| value === undefined \? '-'/);
   assert.match(appJs, /d\.revenue \? '₹' \+ \(d\.revenue\.inr \|\| 0\) : '-'/);
+  // The stars element does not exist in index.html: its assignment must
+  // stay behind an element-exists guard, or loadAdminStats throws.
+  assert.match(appJs, /const starsEl = document\.getElementById\('admin-revenue-stars'\);\s*if \(starsEl\) starsEl\.textContent/);
+  // Whole-request failure dashes the revenue tile instead of leaving a
+  // default in place.
+  assert.match(appJs, /if \(d\.error\) \{ dashRevenue\(\); return; \}/);
+  assert.match(appJs, /\.catch\(e => \{ console\.error\('Admin stats error:', e\); dashRevenue\(\); \}\)/);
+});
+
+test('revenue tile starts dashed (never a fake ₹0) and app.js is cache-busted', () => {
+  const indexHtml = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+  assert.match(indexHtml, /id="admin-revenue-inr">-</);
+  assert.doesNotMatch(indexHtml, /id="admin-revenue-inr">₹0</);
+  assert.match(indexHtml, /js\/app\.js\?v=\d+/);
 });

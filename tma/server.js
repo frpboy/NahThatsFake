@@ -274,11 +274,14 @@ app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
     // parts are logged by name server-side and returned as null + an
     // `errors` entry, so the frontend dashes only the failed tile.
     const statsDb = getServiceRoleSupabase();
+    // Each sub-query is also time-bounded: allSettled alone would still
+    // wait forever on a hung connection, stalling the healthy results.
+    const statsSignal = () => AbortSignal.timeout(10000);
     const [usersResult, bannedResult, checksResult, revenueResult] = await Promise.allSettled([
-      statsDb.from('users').select('*', { count: 'exact', head: true }),
-      statsDb.from('users').select('*', { count: 'exact', head: true }).eq('is_banned', true),
-      statsDb.from('checks').select('*', { count: 'exact', head: true }),
-      statsDb.rpc('get_total_revenue')
+      statsDb.from('users').select('*', { count: 'exact', head: true }).abortSignal(statsSignal()),
+      statsDb.from('users').select('*', { count: 'exact', head: true }).eq('is_banned', true).abortSignal(statsSignal()),
+      statsDb.from('checks').select('*', { count: 'exact', head: true }).abortSignal(statsSignal()),
+      statsDb.rpc('get_total_revenue').abortSignal(statsSignal())
     ]);
 
     const errors = [];
