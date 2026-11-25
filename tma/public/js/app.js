@@ -98,19 +98,34 @@ async function checkAdmin() {
 
 // Load admin stats
 function loadAdminStats() {
+    // A whole-request failure must not leave a stale or default value on
+    // the revenue tile: dash it, like the count tiles' initial state.
+    const dashRevenue = () => {
+        const el = document.getElementById('admin-revenue-inr');
+        if (el) el.textContent = '-';
+    };
     fetch('/api/admin/stats', {
         headers: { 'X-Telegram-Init-Data': tg.initData }
     })
     .then(r => r.json())
     .then(d => {
-        if (d.error) return;
-        document.getElementById('admin-users').textContent = d.users || '-';
-        document.getElementById('admin-banned').textContent = d.banned || '-';
-        document.getElementById('admin-checks').textContent = d.checks || '-';
-        document.getElementById('admin-revenue-inr').textContent = '₹' + (d.revenue?.inr || 0);
-        document.getElementById('admin-revenue-stars').textContent = d.revenue?.stars || 0;
+        if (d.error) { dashRevenue(); return; }
+        // The endpoint marks failed sub-queries as null (see `errors` in
+        // the response): dash only those tiles, show real values — 0
+        // included — for the rest.
+        const showCount = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value === null || value === undefined ? '-' : value;
+        };
+        showCount('admin-users', d.users);
+        showCount('admin-banned', d.banned);
+        showCount('admin-checks', d.checks);
+        const revenueEl = document.getElementById('admin-revenue-inr');
+        if (revenueEl) revenueEl.textContent = d.revenue ? '₹' + (d.revenue.inr || 0) : '-';
+        const starsEl = document.getElementById('admin-revenue-stars');
+        if (starsEl) starsEl.textContent = d.revenue ? (d.revenue.stars || 0) : '-';
     })
-    .catch(e => console.error('Admin stats error:', e));
+    .catch(e => { console.error('Admin stats error:', e); dashRevenue(); });
 }
 
 function adminBroadcast() {
