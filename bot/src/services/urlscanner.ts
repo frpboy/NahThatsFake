@@ -175,87 +175,153 @@ async function checkGoogleSafeBrowsing(url: string): Promise<{
   }
 }
 
-async function checkVirusTotal(url: string): Promise<{
+export type VirusTotalStats = {
   malicious: number;
   suspicious: number;
   harmless: number;
   undetected: number;
-}> {
+};
+
+const VT_STAT_FIELDS = ['malicious', 'suspicious', 'harmless', 'undetected'] as const;
+
+/**
+ * Validate a VirusTotal stats block before it is used as evidence.
+ * Missing/non-finite fields, or an all-zero block (no engine reported at
+ * all — the shape of an incomplete analysis), are provider failures,
+ * never "0 malicious".
+ */
+export function validateVirusTotalStats(stats: unknown): VirusTotalStats {
+  if (!stats || typeof stats !== 'object') {
+    throw new Error('VirusTotal response is missing analysis stats');
+  }
+  const record = stats as Record<string, unknown>;
+  const validated = {} as VirusTotalStats;
+  for (const field of VT_STAT_FIELDS) {
+    const value = record[field];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      throw new Error(`VirusTotal stats field "${field}" is missing or invalid`);
+    }
+    validated[field] = value;
+  }
+  const total = VT_STAT_FIELDS.reduce((sum, field) => sum + validated[field], 0);
+  if (total <= 0) {
+    throw new Error('VirusTotal analysis returned no engine results');
+  }
+  return validated;
+}
+
+/** Minimal HTTP surface checkVirusTotal needs; injectable for tests. */
+export interface VirusTotalHttp {
+  get(url: string, config?: unknown): Promise<{ data: any }>;
+  post(url: string, data?: unknown, config?: unknown): Promise<{ data: any }>;
+}
+
+export interface VirusTotalPollOptions {
+  /** Delay between analysis-status polls. Default 2000 ms. */
+  intervalMs?: number;
+  /** Total polling budget after submission. Default 20000 ms. */
+  maxWaitMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+function httpStatusOf(error: unknown): number | undefined {
+  if (axios.isAxiosError(error)) return error.response?.status;
+  const status = (error as { response?: { status?: unknown } } | null)?.response?.status;
+  return typeof status === 'number' ? status : undefined;
+}
+
+export async function checkVirusTotal(
+  url: string,
+  http: VirusTotalHttp = axios,
+  poll: VirusTotalPollOptions = {}
+): Promise<VirusTotalStats> {
   const apiKey = process.env.VIRUSTOTAL_API_KEY;
-  
+
   if (!apiKey) {
     throw new Error('VirusTotal provider is not configured');
   }
 
+  const headers = { 'x-apikey': apiKey };
+
   try {
-    // First, submit the URL for analysis if not already analyzed
-    // Note: This requires POST permission which free API keys might have limits on.
-    // For free keys, scanning existing URLs is better.
-    // But let's try to submit or check existing report.
-    
-    // Check existing analysis first by URL identifier
+    // Check the existing report first by URL identifier.
     // ⚡ Bolt: Native base64url is ~8.4x faster than manual regex replacements and creates less GC garbage
     const urlId = Buffer.from(url).toString('base64url');
-    
+
+    let reportMissing = false;
     try {
-        const reportResponse = await axios.get(
-            `https://www.virustotal.com/api/v3/urls/${urlId}`,
-            {
-                headers: {
-                    'x-apikey': apiKey
-                },
-                timeout: 5000
-            }
-        );
-        
-        const stats = reportResponse.data.data.attributes.last_analysis_stats;
-        return {
-            malicious: stats.malicious || 0,
-            suspicious: stats.suspicious || 0,
-            harmless: stats.harmless || 0,
-            undetected: stats.undetected || 0
-        };
+      const reportResponse = await http.get(
+        `https://www.virustotal.com/api/v3/urls/${urlId}`,
+        { headers, timeout: 5000 }
+      );
+      // Throws on malformed/empty stats: an unpopulated report is not evidence.
+      return validateVirusTotalStats(reportResponse.data?.data?.attributes?.last_analysis_stats);
     } catch (e) {
-        // If not found, submit it
-        const submitResponse = await axios.post(
-          'https://www.virustotal.com/api/v3/urls',
-          `url=${encodeURIComponent(url)}`,
-          {
-            headers: {
-              'x-apikey': apiKey,
-              'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            timeout: 10000
-          }
-        );
-
-        const analysisId = submitResponse.data.data.id;
-        
-        // Wait a moment for analysis to complete
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Get analysis results
-        const analysisResponse = await axios.get(
-          `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
-          {
-            headers: {
-              'x-apikey': apiKey
-            },
-            timeout: 10000
-          }
-        );
-
-        const stats = analysisResponse.data.data.attributes.stats;
-        
-        return {
-          malicious: stats.malicious || 0,
-          suspicious: stats.suspicious || 0,
-          harmless: stats.harmless || 0,
-          undetected: stats.undetected || 0
-        };
+      if (httpStatusOf(e) === 404) {
+        reportMissing = true;
+      } else {
+        throw e;
+      }
     }
 
+    if (reportMissing) {
+      // No existing report: submit the URL, then poll the analysis until
+      // VirusTotal marks it completed. A queued/in-progress analysis is
+      // NOT a verdict — its stats are not read at all.
+      const submitResponse = await http.post(
+        'https://www.virustotal.com/api/v3/urls',
+        `url=${encodeURIComponent(url)}`,
+        {
+          headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
+          timeout: 10000
+        }
+      );
+
+      const analysisId = submitResponse.data?.data?.id;
+      if (typeof analysisId !== 'string' || analysisId.length === 0) {
+        throw new Error('VirusTotal submission returned no analysis id');
+      }
+
+      const intervalMs = poll.intervalMs ?? 2000;
+      const maxWaitMs = poll.maxWaitMs ?? 20000;
+      const sleep = poll.sleep ?? defaultSleep;
+      let waitedMs = 0;
+
+      for (;;) {
+        const analysisResponse = await http.get(
+          `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
+          { headers, timeout: 10000 }
+        );
+
+        const attributes = analysisResponse.data?.data?.attributes;
+        const status = attributes?.status;
+
+        if (status === 'completed') {
+          return validateVirusTotalStats(attributes?.stats);
+        }
+        if (status !== 'queued' && status !== 'in-progress') {
+          throw new Error(`VirusTotal analysis returned unexpected status: ${String(status)}`);
+        }
+        if (waitedMs >= maxWaitMs) {
+          // Still pending after the polling budget: no evidence, not "clean".
+          throw new Error('VirusTotal analysis did not complete in time');
+        }
+        await sleep(intervalMs);
+        waitedMs += intervalMs;
+      }
+    }
+
+    // Unreachable: both branches above either return or throw.
+    throw new Error('VirusTotal provider request failed');
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith('VirusTotal')) {
+      // Our own validation/completion errors are already provider failures;
+      // log a short marker and rethrow without request details.
+      console.error('VirusTotal provider unavailable', error.message);
+      throw error;
+    }
     // Avoid logging request details, response bodies, or credential-bearing URLs.
     console.error('VirusTotal provider unavailable', axios.isAxiosError(error) ? (error.response?.status ?? error.code ?? 'request-failed') : 'unknown-error');
     throw new Error('VirusTotal provider request failed');
