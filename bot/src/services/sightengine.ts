@@ -144,12 +144,29 @@ export async function detectDeepfake(imageBuffer: Buffer): Promise<{
 
   // Validation runs outside the request try/catch on purpose: a malformed
   // or error response throws here and surfaces to the caller as an
-  // inconclusive image check, never as a LOW verdict.
-  const verdict = interpretSightengineResult(data);
-  return {
-    ...verdict,
-    raw_response: data
-  };
+  // inconclusive image check, never as a LOW verdict. The failure is
+  // logged (message only, no payload) so provider-side malformed
+  // responses are visible to operators, not just to users.
+  try {
+    const verdict = interpretSightengineResult(data);
+    return {
+      ...verdict,
+      raw_response: data
+    };
+  } catch (error) {
+    console.error('Sightengine response validation failed:', error instanceof Error ? error.message : 'unknown-error');
+    throw error;
+  }
+}
+
+// Cache rows are namespaced by validation version: entries written before
+// response validation existed (PR #465) may hold verdicts derived from
+// non-success or incomplete Sightengine responses and must never be
+// served. Namespacing the key makes those rows unreachable.
+const IMAGE_CACHE_KEY_VERSION = 'sightengine-v2';
+
+function imageCacheKey(imageHash: string): string {
+  return `${IMAGE_CACHE_KEY_VERSION}:${imageHash}`;
 }
 
 export async function checkImageCache(imageHash: string): Promise<{
@@ -163,7 +180,7 @@ export async function checkImageCache(imageHash: string): Promise<{
       .from('check_cache')
       .select('score, risk_level, api_source')
       .eq('check_type', 'image')
-      .eq('content_hash', imageHash)
+      .eq('content_hash', imageCacheKey(imageHash))
       .gt('expires_at', new Date().toISOString())
       .single();
 
@@ -192,7 +209,7 @@ export async function saveImageCache(
   try {
     await supabase.from('check_cache').insert({
       check_type: 'image',
-      content_hash: imageHash,
+      content_hash: imageCacheKey(imageHash),
       score,
       risk_level: riskLevel,
       api_source: apiSource,

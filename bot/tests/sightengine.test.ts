@@ -10,10 +10,14 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   validateSightengineScores,
-  interpretSightengineResult
+  interpretSightengineResult,
+  detectDeepfake
 } = require('../src/services/sightengine') as typeof import('../src/services/sightengine');
 
-function run(): void {
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const axios = require('axios') as { post: unknown };
+
+async function run(): Promise<void> {
   // Error status: never a verdict.
   assert.throws(
     () => validateSightengineScores({ status: 'error', scores: { synthetic: 0.1, human: 0.9 } }),
@@ -70,7 +74,31 @@ function run(): void {
   assert.equal(high.risk_level, 'HIGH');
   assert.equal(high.score, 0.95);
 
+  // End-to-end through detectDeepfake() with a stubbed provider transport:
+  // a response with missing scores must be rejected by detectDeepfake
+  // itself, not just by the helpers (Sourcery test-gap finding on PR #465).
+  process.env.SIGHTENGINE_API_KEY = process.env.SIGHTENGINE_API_KEY || 'test-user';
+  process.env.SIGHTENGINE_API_SECRET = process.env.SIGHTENGINE_API_SECRET || 'test-secret';
+  const originalPost = axios.post;
+  try {
+    axios.post = async () => ({ data: { status: 'success' } });
+    await assert.rejects(detectDeepfake(Buffer.from('fake-image')), /missing scores/);
+
+    axios.post = async () => ({ data: { status: 'error', scores: { synthetic: 0.1, human: 0.9 } } });
+    await assert.rejects(detectDeepfake(Buffer.from('fake-image')), /non-success/);
+
+    axios.post = async () => ({ data: { status: 'success', scores: { synthetic: 0.9, human: 0.2 } } });
+    const verdict = await detectDeepfake(Buffer.from('fake-image'));
+    assert.equal(verdict.risk_level, 'HIGH');
+    assert.equal(verdict.score, 0.9);
+  } finally {
+    axios.post = originalPost;
+  }
+
   console.log('Sightengine response validation assertions passed');
 }
 
-run();
+void run().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
