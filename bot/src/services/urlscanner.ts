@@ -198,7 +198,7 @@ export function validateVirusTotalStats(stats: unknown): VirusTotalStats {
   const validated = {} as VirusTotalStats;
   for (const field of VT_STAT_FIELDS) {
     const value = record[field];
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
       throw new Error(`VirusTotal stats field "${field}" is missing or invalid`);
     }
     validated[field] = value;
@@ -217,11 +217,16 @@ export interface VirusTotalHttp {
 }
 
 export interface VirusTotalPollOptions {
-  /** Delay between analysis-status polls. Default 2000 ms. */
+  /** Delay between analysis-status polls. Default 5000 ms (free-tier quota). */
   intervalMs?: number;
-  /** Total polling budget after submission. Default 20000 ms. */
+  /**
+   * Total polling budget after submission, measured as an absolute
+   * deadline that includes request time. Default 20000 ms.
+   */
   maxWaitMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  /** Clock, injectable for tests. Default Date.now. */
+  now?: () => number;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -284,16 +289,32 @@ export async function checkVirusTotal(
         throw new Error('VirusTotal submission returned no analysis id');
       }
 
-      const intervalMs = poll.intervalMs ?? 2000;
+      const intervalMs = poll.intervalMs ?? 5000;
       const maxWaitMs = poll.maxWaitMs ?? 20000;
       const sleep = poll.sleep ?? defaultSleep;
-      let waitedMs = 0;
+      const now = poll.now ?? Date.now;
+      // Absolute deadline: request time counts against the budget, not
+      // just sleep time (review finding on PR #462 — slow pending
+      // responses previously stretched one check past 100 s).
+      const deadline = now() + maxWaitMs;
 
       for (;;) {
+        const remainingMs = deadline - now();
+        if (remainingMs <= 0) {
+          // Still pending after the polling budget: no evidence, not "clean".
+          throw new Error('VirusTotal analysis did not complete in time');
+        }
+
         const analysisResponse = await http.get(
           `https://www.virustotal.com/api/v3/analyses/${analysisId}`,
-          { headers, timeout: 10000 }
+          { headers, timeout: Math.min(10000, remainingMs) }
         );
+
+        // A response that only arrives after the deadline is not accepted,
+        // even if it reports completion: the budget is a hard bound.
+        if (now() > deadline) {
+          throw new Error('VirusTotal analysis did not complete in time');
+        }
 
         const attributes = analysisResponse.data?.data?.attributes;
         const status = attributes?.status;
@@ -304,12 +325,11 @@ export async function checkVirusTotal(
         if (status !== 'queued' && status !== 'in-progress') {
           throw new Error(`VirusTotal analysis returned unexpected status: ${String(status)}`);
         }
-        if (waitedMs >= maxWaitMs) {
-          // Still pending after the polling budget: no evidence, not "clean".
-          throw new Error('VirusTotal analysis did not complete in time');
+
+        const sleepMs = Math.min(intervalMs, deadline - now());
+        if (sleepMs > 0) {
+          await sleep(sleepMs);
         }
-        await sleep(intervalMs);
-        waitedMs += intervalMs;
       }
     }
 
