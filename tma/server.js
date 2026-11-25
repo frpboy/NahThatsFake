@@ -268,29 +268,52 @@ app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
     }
 
     // ⚡ Bolt: Fetch DB-level counts concurrently instead of pulling all rows into memory
-    // and use database-level RPC to calculate total revenue to avoid memory bloat
-    const [
-      { count: usersCount, error: usersError },
-      { count: bannedCount, error: bannedError },
-      { count: checksCount, error: checksError },
-      { data: revenueData, error: revenueError }
-    ] = await Promise.all([
-      getServiceRoleSupabase().from('users').select('*', { count: 'exact', head: true }),
-      getServiceRoleSupabase().from('users').select('*', { count: 'exact', head: true }).eq('is_banned', true),
-      getServiceRoleSupabase().from('checks').select('*', { count: 'exact', head: true }),
-      getServiceRoleSupabase().rpc('get_total_revenue')
+    // and use database-level RPC to calculate total revenue to avoid memory bloat.
+    // Each sub-query settles independently: one failing part (e.g. a missing
+    // get_total_revenue RPC) must not blank the whole dashboard. Failed
+    // parts are logged by name server-side and returned as null + an
+    // `errors` entry, so the frontend dashes only the failed tile.
+    const statsDb = getServiceRoleSupabase();
+    const [usersResult, bannedResult, checksResult, revenueResult] = await Promise.allSettled([
+      statsDb.from('users').select('*', { count: 'exact', head: true }),
+      statsDb.from('users').select('*', { count: 'exact', head: true }).eq('is_banned', true),
+      statsDb.from('checks').select('*', { count: 'exact', head: true }),
+      statsDb.rpc('get_total_revenue')
     ]);
 
-    if (usersError || bannedError || checksError || revenueError) throw new Error('Database error');
+    const errors = [];
+    const settleCount = (result, part) => {
+      const failure = result.status === 'rejected'
+        ? result.reason
+        : (result.value && result.value.error) || null;
+      if (failure) {
+        console.error(`Stats sub-query failed (${part}):`, failure);
+        errors.push(part);
+        return null;
+      }
+      return result.value.count || 0;
+    };
+    const settleRevenue = (result) => {
+      const failure = result.status === 'rejected'
+        ? result.reason
+        : (result.value && result.value.error) || null;
+      if (failure) {
+        console.error('Stats sub-query failed (revenue):', failure);
+        errors.push('revenue');
+        return null;
+      }
+      return {
+        inr: result.value.data?.inr || 0,
+        stars: result.value.data?.stars || 0
+      };
+    };
 
     res.json({
-      users: usersCount || 0,
-      banned: bannedCount || 0,
-      checks: checksCount || 0,
-      revenue: {
-        inr: revenueData?.inr || 0,
-        stars: revenueData?.stars || 0
-      }
+      users: settleCount(usersResult, 'users'),
+      banned: settleCount(bannedResult, 'banned'),
+      checks: settleCount(checksResult, 'checks'),
+      revenue: settleRevenue(revenueResult),
+      errors
     });
   } catch (error) {
     console.error('Stats error:', error);
