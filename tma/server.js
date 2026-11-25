@@ -110,6 +110,16 @@ function getPaymentSupabase() {
   return paymentSupabase;
 }
 
+// Server-side read client. The live Supabase project's anon role has no
+// SELECT privilege on public.users / public.checks (Postgres 42501), so
+// authenticated read endpoints must use the service-role client instead.
+// Every caller is behind validateTelegramData, and this client is only
+// ever constructed server-side — the service-role key never reaches the
+// browser. Shares the cached instance with getPaymentSupabase().
+function getServiceRoleSupabase() {
+  return getPaymentSupabase();
+}
+
 // Razorpay client, created lazily. New purchases are disabled, so the
 // server must start and serve the free app without Razorpay credentials;
 // only the legacy verification/webhook reconciliation routes need it.
@@ -241,11 +251,16 @@ app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
 
     // 🛡️ Sentinel: Ensure only owners and admins can access stats
     if (userId.toString() !== process.env.OWNER_TELEGRAM_ID) {
-      const { data: user } = await supabase
+      const { data: user, error: roleError } = await getServiceRoleSupabase()
         .from('users')
         .select('role')
         .eq('telegram_user_id', userId.toString())
         .single();
+
+      if (roleError && roleError.code !== 'PGRST116') {
+        console.error('Stats role lookup error:', roleError);
+        return res.status(500).json({ error: 'Failed to fetch stats' });
+      }
 
       if (!user || (user.role !== 'admin' && user.role !== 'owner')) {
         return res.status(403).json({ error: 'Forbidden: Admin access required' });
@@ -260,10 +275,10 @@ app.get('/api/admin/stats', validateTelegramData, async (req, res) => {
       { count: checksCount, error: checksError },
       { data: revenueData, error: revenueError }
     ] = await Promise.all([
-      supabase.from('users').select('*', { count: 'exact', head: true }),
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('is_banned', true),
-      supabase.from('checks').select('*', { count: 'exact', head: true }),
-      supabase.rpc('get_total_revenue')
+      getServiceRoleSupabase().from('users').select('*', { count: 'exact', head: true }),
+      getServiceRoleSupabase().from('users').select('*', { count: 'exact', head: true }).eq('is_banned', true),
+      getServiceRoleSupabase().from('checks').select('*', { count: 'exact', head: true }),
+      getServiceRoleSupabase().rpc('get_total_revenue')
     ]);
 
     if (usersError || bannedError || checksError || revenueError) throw new Error('Database error');
@@ -293,11 +308,21 @@ app.get('/api/user/profile', validateTelegramData, async (req, res) => {
   try {
     // ⚡ Bolt: Fetch user profile and check count concurrently in a single query
     // using resource embedding to reduce database round-trip latency.
-    const { data: user } = await supabase
+    const { data: user, error } = await getServiceRoleSupabase()
       .from('users')
       .select('*, checks(count)')
       .eq('telegram_user_id', userId.toString()) // Ensure string comparison
       .single();
+
+    if (error) {
+      // PGRST116 = no row matched: a genuinely missing user.
+      // Anything else is a database error and must not be masked as a 404.
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      console.error('Profile database error:', error);
+      return res.status(500).json({ error: 'Failed to fetch profile' });
+    }
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -322,12 +347,17 @@ app.get('/api/user/role', validateTelegramData, async (req, res) => {
              return res.json({ role: 'owner' });
         }
 
-      const { data: user } = await supabase
+      const { data: user, error } = await getServiceRoleSupabase()
         .from('users')
         .select('role')
         .eq('telegram_user_id', userId.toString())
         .single();
-  
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Role database error:', error);
+        return res.status(500).json({ error: 'Failed to fetch role' });
+      }
+
       res.json({ role: user?.role || 'user' });
     } catch (error) {
       console.error('Role error:', error);
@@ -344,7 +374,7 @@ app.get('/api/user/checks', validateTelegramData, async (req, res) => {
       // ⚡ Bolt: Fetch user and their recent checks in a single query
       // using parent-to-child resource embedding instead of sequential queries.
       // This saves a database round-trip while maintaining 404 behavior.
-      const { data: user, error } = await supabase
+      const { data: user, error } = await getServiceRoleSupabase()
         .from('users')
         .select('id, checks(*)')
         .eq('telegram_user_id', userId.toString())
