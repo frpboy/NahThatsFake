@@ -391,9 +391,18 @@ function renderChecks() {
 
     checks.forEach(check => {
         const icon = check.check_type === 'image' ? '🖼️' : '🔗';
-        const riskLevel = check.risk_level || 'UNKNOWN';
+        // A check with no real risk level/score was inconclusive (e.g. its
+        // service timed out). Show it as its own inconclusive result with
+        // no verdict — never as "0% Risk", which reads as a clean verdict.
+        const outcome = typeof SeparateCheckResults !== 'undefined'
+            ? SeparateCheckResults.outcomeFromCheckRow(check)
+            : null;
+        const isInconclusive = outcome
+            ? outcome.status !== 'complete'
+            : !(check.risk_level && typeof check.score === 'number');
+        const riskLevel = isInconclusive ? 'INCONCLUSIVE' : check.risk_level;
         const riskClass = `risk-${riskLevel.toLowerCase()}`;
-        const scorePercent = check.score ? Math.round(check.score * 100) : 0;
+        const scoreText = isInconclusive ? 'No verdict' : `${Math.round(check.score * 100)}% Risk`;
         const date = new Date(check.created_at).toLocaleDateString();
         const typeLabel = check.check_type === 'image' ? 'Image Analysis' : 'Link Analysis';
 
@@ -401,7 +410,9 @@ function renderChecks() {
         item.className = 'check-item';
         item.setAttribute('role', 'button');
         item.setAttribute('tabindex', '0');
-        item.setAttribute('aria-label', `${typeLabel} from ${date}. Risk level: ${riskLevel}, ${scorePercent}% Risk.`);
+        item.setAttribute('aria-label', isInconclusive
+            ? `${typeLabel} from ${date}. Inconclusive: no verdict for this check.`
+            : `${typeLabel} from ${date}. Risk level: ${riskLevel}, ${scoreText}.`);
 
         item.onclick = () => viewCheckDetails(check.id);
         item.onkeydown = (e) => {
@@ -441,7 +452,7 @@ function renderChecks() {
 
         const scoreDiv = document.createElement('div');
         scoreDiv.setAttribute('style', 'font-size: 12px; color: var(--tg-theme-hint-color); margin-top: 4px;');
-        scoreDiv.textContent = `${scorePercent}% Risk`;
+        scoreDiv.textContent = scoreText;
 
         resultDiv.appendChild(badgeDiv);
         resultDiv.appendChild(scoreDiv);
@@ -456,7 +467,14 @@ function renderChecks() {
 
 function viewCheckDetails(checkId) {
     hapticFeedback('light');
-    // Future: Show detailed modal or navigate to detail view
+    // Show this check's own result only. Each check (image / link) carries
+    // its own verdict; one check's result is never presented as a verdict
+    // on another check, and an inconclusive check shows no verdict at all.
+    const check = checks.find(c => c.id === checkId);
+    if (check && typeof SeparateCheckResults !== 'undefined') {
+        showAppAlert(SeparateCheckResults.describeCheckResult(check));
+        return;
+    }
     showAppAlert('Detailed report view coming soon!');
 }
 

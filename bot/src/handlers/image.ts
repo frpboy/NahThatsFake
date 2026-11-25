@@ -3,6 +3,13 @@ import { Context } from 'grammy';
 import { supabase } from '../supabase';
 import { checkCredits, consumeCredit } from '../utils/credits';
 import { detectDeepfake, checkImageCache, saveImageCache } from '../services/sightengine';
+import { checkUrlSafety } from '../services/urlscanner';
+import {
+  buildSeparateCheckResults,
+  formatSeparateCheckResults,
+  classifyServiceError,
+  CheckOutcome
+} from '../services/separateResults';
 import { getOrCreateUserByTelegram, getUserByTelegramId } from '../utils/user';
 import crypto from 'crypto';
 import axios from 'axios';
@@ -24,6 +31,12 @@ export async function processImageCheck(ctx: Context) {
       await ctx.reply('Please send a valid image.');
       return;
     }
+
+    // A photo can arrive with a link in its caption (e.g. a forwarded post).
+    // That is TWO checks, and they are always reported as two separate
+    // results: the link result is never a verdict on the image, and an
+    // image-service timeout is inconclusive for the image only.
+    const captionUrl = ctx.message?.caption?.match(/https?:\/\/[^\s]+/)?.[0];
 
     const dbUser = actingTelegramUserId === user.id.toString()
       ? await getOrCreateUserByTelegram(user)
@@ -76,8 +89,9 @@ export async function processImageCheck(ctx: Context) {
 
     // Check cache
     const cached = await checkImageCache(imageHash);
-    
+
     let result;
+    let imageError: unknown = null;
     if (cached.found && cached.score !== undefined && cached.risk_level !== undefined) {
       result = {
         score: cached.score,
@@ -87,19 +101,27 @@ export async function processImageCheck(ctx: Context) {
       };
     } else {
       // Call Sightengine API
-      const apiResult = await detectDeepfake(imageBuffer);
-      result = {
-        score: apiResult.score,
-        risk_level: apiResult.risk_level,
-        cached: false,
-        api_source: 'sightengine'
-      };
+      try {
+        const apiResult = await detectDeepfake(imageBuffer);
+        result = {
+          score: apiResult.score,
+          risk_level: apiResult.risk_level,
+          cached: false,
+          api_source: 'sightengine'
+        };
 
-      // Save to cache
-      await saveImageCache(imageHash, result.score, result.risk_level, result.api_source);
+        // Save to cache
+        await saveImageCache(imageHash, result.score, result.risk_level, result.api_source);
+      } catch (error) {
+        // With a caption link there is still a link result to report, so
+        // keep the failure as an inconclusive image outcome instead of
+        // dropping the whole message. Without one, keep the old behaviour.
+        if (!captionUrl) throw error;
+        imageError = error;
+      }
     }
 
-    if (!isImpersonating) {
+    if (!isImpersonating && result) {
       await supabase.from('checks').insert({
         user_id: dbUser.id,
         check_type: 'image',
@@ -110,6 +132,51 @@ export async function processImageCheck(ctx: Context) {
         api_source: result.api_source,
         credit_source: creditSource
       });
+    }
+
+    // Caption link present: report the image check and the link check as
+    // two separate results. A clean link result is not a verdict on the
+    // image, and a timed-out image service is inconclusive for the image
+    // only — the two are never merged into one verdict.
+    if (captionUrl) {
+      let linkOutcome: CheckOutcome;
+      try {
+        const linkResult = await checkUrlSafety(captionUrl);
+        linkOutcome = { status: 'complete', score: linkResult.score, risk_level: linkResult.risk_level };
+
+        if (!isImpersonating) {
+          const urlHash = crypto.createHash('sha256')
+            .update(`urlscanner-v2:${captionUrl.toLowerCase().trim()}`)
+            .digest('hex');
+          await supabase.from('checks').insert({
+            user_id: dbUser.id,
+            check_type: 'link',
+            content_hash: urlHash,
+            score: linkResult.score,
+            risk_level: linkResult.risk_level,
+            cached: false,
+            api_source: linkResult.sources.join(', ') || 'unknown',
+            credit_source: creditSource
+          });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        linkOutcome = {
+          status: /inconclusive/i.test(message) ? 'inconclusive' : classifyServiceError(error)
+        };
+      }
+
+      const imageOutcome: CheckOutcome = result
+        ? { status: 'complete', score: result.score, risk_level: result.risk_level }
+        : { status: classifyServiceError(imageError) };
+
+      const separate = buildSeparateCheckResults({ image: imageOutcome, link: linkOutcome });
+      await ctx.reply(formatSeparateCheckResults(separate), { parse_mode: 'Markdown' });
+      return;
+    }
+
+    if (!result) {
+      throw new Error('Image analysis failed');
     }
 
     // Send result

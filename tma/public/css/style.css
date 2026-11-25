@@ -253,6 +253,17 @@ h3 {
     color: #4caf50;
 }
 
+/* Inconclusive is neutral grey — deliberately not the green "low" styling,
+   so a timed-out check can never read as a clean verdict. */
+.risk-inconclusive {
+    background: rgba(158, 158, 158, 0.15);
+    color: #616161;
+}
+
+.dark .risk-inconclusive {
+    color: #bdbdbd;
+}
+
 .button {
     background: var(--tg-theme-button-color);
     color: var(--tg-theme-button-text-color);
