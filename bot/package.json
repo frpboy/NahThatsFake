@@ -15,7 +15,8 @@
     "test:separate-results": "ts-node --project tsconfig.test.json tests/separate-results.test.ts",
     "test:payment-shutdown": "ts-node --project tsconfig.test.json tests/payment-shutdown.test.ts",
     "test:credits": "ts-node --project tsconfig.test.json tests/credits.test.ts",
-    "test:abuse": "ts-node --project tsconfig.test.json tests/abuse.test.ts"
+    "test:abuse": "ts-node --project tsconfig.test.json tests/abuse.test.ts",
+    "test:handlers": "ts-node --project tsconfig.test.json tests/handler-outcomes.test.ts"
   },
   "keywords": [
     "telegram",
