@@ -28,7 +28,14 @@ interface FakeBehavior {
   user?: Record<string, unknown> | null;
   userError?: unknown;
   updateError?: unknown;
+  /**
+   * Simulates a concurrent enforcement call having banned the user after
+   * this call read them: conditional updates match no row and return an
+   * empty data array (with .select('id') chained), like PostgREST.
+   */
+  updateSuperseded?: boolean;
   admin?: { id: string } | null;
+  adminError?: unknown;
   auditInsertError?: unknown;
 }
 
@@ -40,7 +47,7 @@ interface FakeBehavior {
 class FakeQuery implements PromiseLike<any> {
   private op: 'insert' | 'select' | 'update' | null = null;
   private payload: any;
-  private eqField: string | null = null;
+  private eqFields: string[] = [];
 
   constructor(
     private table: string,
@@ -56,7 +63,11 @@ class FakeQuery implements PromiseLike<any> {
   }
 
   select(): this {
-    this.op = 'select';
+    // .select('id') chained after .update() is a RETURNING clause, not a
+    // new operation; only a leading select() starts a read.
+    if (this.op !== 'update') {
+      this.op = 'select';
+    }
     return this;
   }
 
@@ -67,7 +78,7 @@ class FakeQuery implements PromiseLike<any> {
   }
 
   eq(field: string): this {
-    this.eqField = field;
+    this.eqFields.push(field);
     return this;
   }
 
@@ -81,7 +92,10 @@ class FakeQuery implements PromiseLike<any> {
 
   single(): Promise<any> {
     this.calls.push({ table: this.table, op: 'select', payload: this.payload });
-    if (this.table === 'users' && this.eqField === 'role') {
+    if (this.table === 'users' && this.eqFields.includes('role')) {
+      if (this.behavior.adminError) {
+        return Promise.resolve({ data: null, error: this.behavior.adminError });
+      }
       return Promise.resolve({ data: this.behavior.admin ?? null, error: null });
     }
     if (this.table === 'users') {
@@ -108,7 +122,12 @@ class FakeQuery implements PromiseLike<any> {
       return { count: counts[idx], error: this.behavior.countError ?? null };
     }
     if (this.op === 'update' && this.table === 'users') {
-      return { error: this.behavior.updateError ?? null };
+      if (this.behavior.updateError) {
+        return { data: null, error: this.behavior.updateError };
+      }
+      // A conditional update that matched no row (concurrent ban landed
+      // first) returns an empty array; a landed update returns the row.
+      return { data: this.behavior.updateSuperseded ? [] : [{ id: 'row' }], error: null };
     }
     return { error: null };
   }
@@ -279,6 +298,128 @@ async function run(): Promise<void> {
     } finally {
       cap.restore();
     }
+  }
+
+  // #470 review (A1): the HARD_BAN write clears banned_until, so no
+  // stale temp-ban expiry can ever unban a permanently banned user.
+  {
+    const cap = captureConsole();
+    try {
+      const { client, calls } = makeFakeClient({
+        counts: [10, 10, 10],
+        user: ACTIVE_USER,
+        admin: OWNER
+      });
+      await checkAbuseAndEnforce(USER_ID, client);
+      const updates = calls.filter(c => c.table === 'users' && c.op === 'update');
+      assert.equal(updates.length, 1);
+      assert.ok('banned_until' in updates[0].payload);
+      assert.equal(updates[0].payload.banned_until, null);
+      assert.equal(calls.filter(c => c.table === 'admin_logs' && c.op === 'insert').length, 1);
+    } finally {
+      cap.restore();
+    }
+  }
+
+  // #470 review (A1): a TEMP_BAN whose conditional update matches no row
+  // (a concurrent call banned the user first, possibly a HARD_BAN) is
+  // superseded: it does not claim the action and writes no audit entry —
+  // above all it must not stamp a banned_until over the existing ban.
+  {
+    const cap = captureConsole();
+    try {
+      const { client, calls } = makeFakeClient({
+        counts: [7, 2, 7],
+        user: ACTIVE_USER,
+        updateSuperseded: true,
+        admin: OWNER
+      });
+      await checkAbuseAndEnforce(USER_ID, client);
+      assert.equal(calls.filter(c => c.table === 'users' && c.op === 'update').length, 1);
+      assert.equal(calls.filter(c => c.table === 'admin_logs' && c.op === 'insert').length, 0);
+      assert.ok(cap.logs.some(l => l.includes('TEMP_BAN') && l.includes('superseded')));
+      assert.ok(!cap.logs.some(l => l.includes('-> TEMP_BAN')));
+    } finally {
+      cap.restore();
+    }
+  }
+
+  // #470 review (A1): same supersede behaviour for a THROTTLE racing a
+  // concurrent ban.
+  {
+    const cap = captureConsole();
+    try {
+      const { client, calls } = makeFakeClient({
+        counts: [3, 3, 3],
+        user: ACTIVE_USER,
+        updateSuperseded: true,
+        admin: OWNER
+      });
+      await checkAbuseAndEnforce(USER_ID, client);
+      assert.equal(calls.filter(c => c.table === 'users' && c.op === 'update').length, 1);
+      assert.equal(calls.filter(c => c.table === 'admin_logs' && c.op === 'insert').length, 0);
+      assert.ok(cap.logs.some(l => l.includes('THROTTLE') && l.includes('superseded')));
+      assert.ok(!cap.logs.some(l => l.includes('-> THROTTLE')));
+    } finally {
+      cap.restore();
+    }
+  }
+
+  // #470 review (A5): enforcement lands but no owner exists to attribute
+  // the audit entry: the gap is reported loudly instead of passing
+  // silently, and the action itself still stands.
+  {
+    const cap = captureConsole();
+    try {
+      const { client, calls } = makeFakeClient({
+        counts: [3, 3, 3],
+        user: ACTIVE_USER,
+        admin: null
+      });
+      await checkAbuseAndEnforce(USER_ID, client);
+      assert.equal(calls.filter(c => c.table === 'users' && c.op === 'update').length, 1);
+      assert.equal(calls.filter(c => c.table === 'admin_logs' && c.op === 'insert').length, 0);
+      assert.ok(cap.errors.some(e => e.includes('could not be audited')));
+      assert.ok(cap.logs.some(l => l.includes('THROTTLE')));
+    } finally {
+      cap.restore();
+    }
+  }
+
+  // #470 review (A5): a failed owner lookup is reported the same way.
+  {
+    const cap = captureConsole();
+    try {
+      const { client } = makeFakeClient({
+        counts: [3, 3, 3],
+        user: ACTIVE_USER,
+        adminError: { message: 'lookup failed' }
+      });
+      await checkAbuseAndEnforce(USER_ID, client);
+      assert.ok(cap.errors.some(e => e.includes('could not be audited')));
+    } finally {
+      cap.restore();
+    }
+  }
+
+  // #470 review (A2): the /simulate_abuse handler in index.ts checks the
+  // simulated-flag insert result before running enforcement. Source-level
+  // assertion, matching the repo's existing source-test precedent (the
+  // bot entry point cannot be unit-tested in-process).
+  {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = require('node:fs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = require('node:path');
+    const indexSource = fs.readFileSync(path.join(__dirname, '../src/index.ts'), 'utf8');
+    const start = indexSource.indexOf("bot.command('simulate_abuse'");
+    assert.notEqual(start, -1);
+    const block = indexSource.slice(start, indexSource.indexOf("bot.command('simulate_abuse_reset'", start));
+    const insertCheck = block.indexOf('const { error: insertError } = await supabase.from(\'abuse_flags\').insert(rows)');
+    assert.notEqual(insertCheck, -1, 'simulate_abuse must destructure the insert error');
+    const enforceCall = block.indexOf('await checkAbuseAndEnforce(target.id)');
+    assert.ok(insertCheck < enforceCall, 'insert must be checked before enforcement runs');
+    assert.ok(block.includes('Simulation failed'), 'handler must report failure instead of success');
   }
 
   console.log('Abuse flag & enforcement error-checking assertions passed');
