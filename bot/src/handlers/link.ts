@@ -72,6 +72,16 @@ export async function processLinkCheck(ctx: Context) {
       return;
     }
 
+    // Telegram redelivered an update whose reservation already exists:
+    // the original delivery owns that reservation. This delivery must
+    // not run its own scan, write its own history row, or settle/release
+    // the shared reservation (#471 review). A reservation ADOPTED by
+    // reserveCredit's retry belongs to this request, so it proceeds.
+    if (reservation?.duplicate && !reservation.adopted) {
+      await ctx.reply('♻️ This exact request was already received, so it is not being run twice — and no extra credit was charged.');
+      return;
+    }
+
     const creditSource = creditSourceRaw === 'owner' ? 'premium' : creditSourceRaw;
 
     await ctx.reply('🔍 Analyzing link safety...');
@@ -140,13 +150,10 @@ export async function processLinkCheck(ctx: Context) {
       });
     }
 
-    // A verdict (complete or partial) is being delivered: settle the
-    // reservation so the credit stays spent exactly once.
-    if (!isImpersonating) {
-      await settleCredit(actingTelegramUserId, reservation);
-    }
-
-    // Send result
+    // Send result. The reservation is settled only AFTER this reply
+    // succeeds (below): settling first would make an undelivered
+    // verdict unrefundable, because a settled reservation cannot be
+    // released (#471 review).
     const riskEmoji = result.risk_level === 'HIGH' ? '🔴' : result.risk_level === 'MEDIUM' ? '🟡' : '🟢';
     const scorePercent = (result.score * 100).toFixed(1);
     
@@ -179,11 +186,18 @@ Need a detailed report? Open the full app for more insights.`, {
       }
     });
 
+    // The verdict has been delivered: settle the reservation so the
+    // credit stays spent exactly once.
+    if (!isImpersonating) {
+      await settleCredit(actingTelegramUserId, reservation);
+    }
+
   } catch (error) {
-    // The scan threw (inconclusive / provider unavailable) or something
-    // else failed before a verdict was delivered: refund the reservation
-    // so the user never pays for a check they didn't get (#410). If the
-    // reservation was already settled, release is a no-op in the RPC.
+    // The scan threw (inconclusive / provider unavailable) or the
+    // verdict reply itself failed: refund the reservation so the user
+    // never pays for a check they didn't get (#410). Settling happens
+    // only after a successful reply, so at this point the reservation
+    // is still releasable.
     if (!isImpersonating) {
       await releaseCredit(actingTelegramUserId, reservation, 'link_scan_failed');
     }
