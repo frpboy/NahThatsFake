@@ -70,8 +70,30 @@ export interface CreditReservation {
   idempotencyKey: string | null;
   /** True when this reservation replays an earlier identical request. */
   duplicate?: boolean;
+  /**
+   * True when a 'duplicate' result was adopted by reserveCredit's own
+   * retry after its first attempt's response was lost: the reservation
+   * belongs to THIS request, so the handler proceeds with the check
+   * instead of standing down like a true duplicate delivery (#471
+   * review).
+   */
+  adopted?: boolean;
   /** True when the debit used the legacy non-atomic fallback (see below). */
   legacy?: boolean;
+}
+
+/**
+ * Thrown by reserveCredit when the credit service itself fails (RPC
+ * error after a retry, or an unexpected result), as opposed to the user
+ * simply having no credits (which returns null). Handlers let it
+ * propagate to their catch, which replies with a retryable error instead
+ * of the misleading "no credits left" message (#471 review).
+ */
+export class CreditServiceError extends Error {
+  constructor(message: string, readonly cause?: unknown) {
+    super(message);
+    this.name = 'CreditServiceError';
+  }
 }
 
 interface RpcErrorLike {
@@ -102,6 +124,10 @@ export interface CreditDeps {
     telegramUserId: string,
     user: CachedUser
   ) => Promise<'daily' | 'permanent' | null>;
+  legacyRelease?: (
+    telegramUserId: string,
+    source: 'daily' | 'permanent'
+  ) => Promise<void>;
 }
 
 /**
@@ -151,6 +177,38 @@ async function legacyConsumeCredit(
   return null;
 }
 
+/**
+ * Compensating refund for a legacy-fallback debit (#471 review): puts
+ * the debited credit back so a failed check does not cost the user even
+ * in the pre-migration fallback. Unlike release_credit this is a
+ * read-then-write increment — the same non-atomic shape as the legacy
+ * debit itself — so two legacy operations racing on one balance can
+ * still interleave; that residual risk is exactly why the fallback is a
+ * stopgap and the migration-first rollout is the supported path.
+ */
+async function legacyReleaseCredit(
+  telegramUserId: string,
+  source: 'daily' | 'permanent'
+): Promise<void> {
+  const { data: user, error: readError } = await supabase
+    .from('users')
+    .select('daily_credits, permanent_credits')
+    .eq('telegram_user_id', telegramUserId)
+    .single();
+  if (readError || !user) {
+    console.error('[Credits] Legacy refund could not load the user balance:', readError);
+    return;
+  }
+  const column = source === 'daily' ? 'daily_credits' : 'permanent_credits';
+  const { error } = await supabase
+    .from('users')
+    .update({ [column]: (user[column] as number) + 1 })
+    .eq('telegram_user_id', telegramUserId);
+  if (error) {
+    console.error('[Credits] Legacy refund failed:', error);
+  }
+}
+
 export async function reserveCredit(
   telegramUserId: string,
   idempotencyKey: string,
@@ -179,12 +237,40 @@ export async function reserveCredit(
     return { source: 'premium', idempotencyKey: null };
   }
 
+  // A reservation without a key could never be settled or refunded (the
+  // SQL function rejects keyless calls for the same reason); fail here
+  // instead of debiting into the void.
+  if (!idempotencyKey) {
+    console.error('[Credits] reserveCredit called without an idempotency key; refusing to debit.');
+    return null;
+  }
+
   const rpc = deps.rpc ?? defaultRpcClient;
-  const { data, error } = await rpc.rpc('reserve_credit', {
+  const reserveArgs = {
     p_telegram_user_id: telegramUserId,
     p_idempotency_key: idempotencyKey,
     p_check_type: checkType
-  });
+  };
+
+  let { data, error } = await rpc.rpc('reserve_credit', reserveArgs);
+  let recovered = false;
+
+  if (error && !isMissingCreditFunctionError(error)) {
+    // The reserve is idempotent by key, so one retry is safe — and it
+    // recovers the worst failure shape: the first attempt COMMITTED but
+    // its response was lost. The retry then replays that reservation as
+    // 'duplicate', and this request adopts it (marked below) instead of
+    // leaving the debit orphaned with no handler able to settle or
+    // release it (#471 review).
+    const retry = await rpc.rpc('reserve_credit', reserveArgs);
+    if (!retry.error) {
+      data = retry.data;
+      error = null;
+      recovered = true;
+    } else if (!isMissingCreditFunctionError(retry.error)) {
+      error = retry.error;
+    }
+  }
 
   if (error) {
     if (isMissingCreditFunctionError(error)) {
@@ -197,8 +283,10 @@ export async function reserveCredit(
       const source = await legacy(telegramUserId, user);
       return source ? { source, idempotencyKey: null, legacy: true } : null;
     }
-    console.error('[Credits] reserve_credit failed:', error);
-    return null;
+    // A service failure is NOT an empty balance: throwing lets the
+    // handlers answer with a retryable error rather than telling a
+    // funded user they have no credits (#471 review).
+    throw new CreditServiceError('reserve_credit failed', error);
   }
 
   const status = data?.status as string | undefined;
@@ -207,13 +295,15 @@ export async function reserveCredit(
     case 'reserved':
       return source ? { source, idempotencyKey } : null;
     case 'duplicate':
-      return source ? { source, idempotencyKey, duplicate: true } : null;
+      return source ? { source, idempotencyKey, duplicate: true, adopted: recovered || undefined } : null;
     case 'none':
     case 'no_user':
       return null;
-    default:
-      console.error('[Credits] Unexpected reserve_credit result:', data);
+    case 'invalid_key':
+      console.error('[Credits] reserve_credit rejected the idempotency key.');
       return null;
+    default:
+      throw new CreditServiceError(`Unexpected reserve_credit result: ${JSON.stringify(data)}`);
   }
 }
 
@@ -224,10 +314,18 @@ export async function settleCredit(
 ): Promise<void> {
   if (!reservation || !reservation.idempotencyKey) return;
   const rpc = deps.rpc ?? defaultRpcClient;
-  const { data, error } = await rpc.rpc('settle_credit', {
+  const settleArgs = {
     p_telegram_user_id: telegramUserId,
     p_idempotency_key: reservation.idempotencyKey
-  });
+  };
+  // Settling is an idempotent state transition: one retry covers a
+  // transient RPC failure. A failure after the retry is still only
+  // logged — durably reconciling stuck reservations needs the sweeper
+  // follow-up, not a blocking loop here (#471 review).
+  let { data, error } = await rpc.rpc('settle_credit', settleArgs);
+  if (error) {
+    ({ data, error } = await rpc.rpc('settle_credit', settleArgs));
+  }
   if (error) {
     console.error('[Credits] settle_credit failed:', error);
   } else if (data?.status === 'already_released') {
@@ -243,19 +341,29 @@ export async function releaseCredit(
 ): Promise<void> {
   if (!reservation) return;
   if (!reservation.idempotencyKey) {
-    // Owner/premium never debited. A legacy-fallback debit cannot be
-    // refunded through the RPC; surface that instead of staying silent.
-    if (reservation.legacy) {
-      console.error('[Credits] Cannot release a legacy-fallback debit; apply the atomic-credits migration.');
+    // Owner/premium never debited, so there is nothing to refund. A
+    // legacy-fallback debit has no RPC reservation; refund it with the
+    // compensating legacy release instead of silently keeping the
+    // credit (#471 review).
+    if (reservation.legacy && (reservation.source === 'daily' || reservation.source === 'permanent')) {
+      const legacyRelease = deps.legacyRelease ?? legacyReleaseCredit;
+      await legacyRelease(telegramUserId, reservation.source);
     }
     return;
   }
   const rpc = deps.rpc ?? defaultRpcClient;
-  const { data, error } = await rpc.rpc('release_credit', {
+  const releaseArgs = {
     p_telegram_user_id: telegramUserId,
     p_idempotency_key: reservation.idempotencyKey,
     p_reason: reason
-  });
+  };
+  // Releasing is idempotent too: one retry on a transient RPC failure,
+  // so an inconclusive check is not left debited by a blip (#471
+  // review). A failure after the retry is logged for reconciliation.
+  let { data, error } = await rpc.rpc('release_credit', releaseArgs);
+  if (error) {
+    ({ data, error } = await rpc.rpc('release_credit', releaseArgs));
+  }
   if (error) {
     console.error('[Credits] release_credit failed:', error);
   } else if (data?.status === 'no_reservation') {
