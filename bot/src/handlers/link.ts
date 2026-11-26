@@ -1,7 +1,7 @@
 
 import { Context } from 'grammy';
 import { supabase } from '../supabase';
-import { checkCredits, consumeCredit } from '../utils/credits';
+import { checkCredits, reserveCredit, settleCredit, releaseCredit, CreditReservation } from '../utils/credits';
 import { checkUrlSafety } from '../services/urlscanner';
 import { getOrCreateUserByTelegram, getUserByTelegramId } from '../utils/user';
 import { config } from '../config';
@@ -14,8 +14,12 @@ export async function processLinkCheck(ctx: Context) {
   const actingTelegramUserId = (ctx as any).state?.actingTelegramUserId || user.id.toString();
   const isImpersonating = Boolean((ctx as any).state?.isImpersonating);
   const text = ctx.message?.text;
-  
+
   if (!text) return;
+
+  // Held outside the try so the catch can release the reservation when
+  // the scan fails or ends inconclusive (#410).
+  let reservation: CreditReservation | null = null;
 
   try {
     const dbUser = actingTelegramUserId === user.id.toString()
@@ -50,7 +54,14 @@ export async function processLinkCheck(ctx: Context) {
       }
     }
 
-    const creditSourceRaw = isImpersonating ? 'owner' : await consumeCredit(actingTelegramUserId, 'daily', dbUser);
+    // Reserve one credit atomically, keyed by this Telegram update so a
+    // redelivered update cannot debit twice. The reservation is settled
+    // once a verdict is delivered and released if the scan fails.
+    const idempotencyKey = `tg:${ctx.update?.update_id ?? ctx.message?.message_id ?? 'unknown'}:link`;
+    reservation = isImpersonating
+      ? { source: 'owner', idempotencyKey: null }
+      : await reserveCredit(actingTelegramUserId, idempotencyKey, 'link', dbUser);
+    const creditSourceRaw = reservation?.source;
     if (!creditSourceRaw) {
       await ctx.reply(
 `🚫 *No credits left*
@@ -129,6 +140,12 @@ export async function processLinkCheck(ctx: Context) {
       });
     }
 
+    // A verdict (complete or partial) is being delivered: settle the
+    // reservation so the credit stays spent exactly once.
+    if (!isImpersonating) {
+      await settleCredit(actingTelegramUserId, reservation);
+    }
+
     // Send result
     const riskEmoji = result.risk_level === 'HIGH' ? '🔴' : result.risk_level === 'MEDIUM' ? '🟡' : '🟢';
     const scorePercent = (result.score * 100).toFixed(1);
@@ -163,6 +180,13 @@ Need a detailed report? Open the full app for more insights.`, {
     });
 
   } catch (error) {
+    // The scan threw (inconclusive / provider unavailable) or something
+    // else failed before a verdict was delivered: refund the reservation
+    // so the user never pays for a check they didn't get (#410). If the
+    // reservation was already settled, release is a no-op in the RPC.
+    if (!isImpersonating) {
+      await releaseCredit(actingTelegramUserId, reservation, 'link_scan_failed');
+    }
     console.error('Link check error:', error);
     await ctx.reply('❌ Sorry, I couldn\'t check that link. Please try again.');
   }
