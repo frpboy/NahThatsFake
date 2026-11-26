@@ -14,6 +14,7 @@
     "test:sightengine": "ts-node --project tsconfig.test.json tests/sightengine.test.ts",
     "test:separate-results": "ts-node --project tsconfig.test.json tests/separate-results.test.ts",
     "test:payment-shutdown": "ts-node --project tsconfig.test.json tests/payment-shutdown.test.ts",
+    "test:credits": "ts-node --project tsconfig.test.json tests/credits.test.ts",
     "test:abuse": "ts-node --project tsconfig.test.json tests/abuse.test.ts"
   },
   "keywords": [
