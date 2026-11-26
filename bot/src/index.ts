@@ -1020,7 +1020,17 @@ bot.command('simulate_abuse', async (ctx) => {
     is_simulated: true
   }));
 
-  await supabase.from('abuse_flags').insert(rows);
+  // The simulated flags must actually persist before enforcement runs:
+  // an unchecked insert failure would otherwise enforce (and report
+  // success) on flags that were never recorded (#470 review, same class
+  // as #414).
+  const { error: insertError } = await supabase.from('abuse_flags').insert(rows);
+  if (insertError) {
+    console.error('[Admin] simulate_abuse: failed to record simulated flags:', insertError);
+    await ctx.reply('❌ Simulation failed: the abuse flags could not be recorded, so no enforcement was run.');
+    return;
+  }
+
   await checkAbuseAndEnforce(target.id);
 
   const { data: after } = await supabase
