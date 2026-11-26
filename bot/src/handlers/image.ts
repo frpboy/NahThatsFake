@@ -1,7 +1,7 @@
 
 import { Context } from 'grammy';
 import { supabase } from '../supabase';
-import { checkCredits, consumeCredit } from '../utils/credits';
+import { checkCredits, reserveCredit, settleCredit, releaseCredit, CreditReservation } from '../utils/credits';
 import { detectDeepfake, checkImageCache, saveImageCache } from '../services/sightengine';
 import { checkUrlSafety } from '../services/urlscanner';
 import {
@@ -20,7 +20,11 @@ export async function processImageCheck(ctx: Context) {
 
   const actingTelegramUserId = (ctx as any).state?.actingTelegramUserId || user.id.toString();
   const isImpersonating = Boolean((ctx as any).state?.isImpersonating);
-  
+
+  // Held outside the try so the catch can release the reservation when
+  // the check fails before any verdict is delivered (#410).
+  let reservation: CreditReservation | null = null;
+
   try {
     // Get image file ID
     const photo = ctx.message?.photo;
@@ -61,7 +65,14 @@ export async function processImageCheck(ctx: Context) {
       }
     }
 
-    const creditSourceRaw = isImpersonating ? 'owner' : await consumeCredit(actingTelegramUserId, 'daily', dbUser);
+    // Reserve one credit atomically, keyed by this Telegram update so a
+    // redelivered update cannot debit twice. The reservation is settled
+    // once a verdict is delivered and released if the check fails.
+    const idempotencyKey = `tg:${ctx.update?.update_id ?? ctx.message?.message_id ?? 'unknown'}:image`;
+    reservation = isImpersonating
+      ? { source: 'owner', idempotencyKey: null }
+      : await reserveCredit(actingTelegramUserId, idempotencyKey, 'image', dbUser);
+    const creditSourceRaw = reservation?.source;
     if (!creditSourceRaw) {
       await ctx.reply(
 `🚫 *No credits left*
@@ -170,6 +181,17 @@ export async function processImageCheck(ctx: Context) {
         ? { status: 'complete', score: result.score, risk_level: result.risk_level }
         : { status: classifyServiceError(imageError) };
 
+      // One credit covers the whole message. If at least one of the two
+      // checks produced a verdict, settle; if both ended inconclusive,
+      // release so the user pays nothing for no verdict (#410).
+      if (!isImpersonating) {
+        if (imageOutcome.status === 'complete' || linkOutcome.status === 'complete') {
+          await settleCredit(actingTelegramUserId, reservation);
+        } else {
+          await releaseCredit(actingTelegramUserId, reservation, 'image_and_link_inconclusive');
+        }
+      }
+
       const separate = buildSeparateCheckResults({ image: imageOutcome, link: linkOutcome });
       await ctx.reply(formatSeparateCheckResults(separate), { parse_mode: 'Markdown' });
       return;
@@ -177,6 +199,12 @@ export async function processImageCheck(ctx: Context) {
 
     if (!result) {
       throw new Error('Image analysis failed');
+    }
+
+    // A verdict is being delivered: settle the reservation so the
+    // credit stays spent exactly once.
+    if (!isImpersonating) {
+      await settleCredit(actingTelegramUserId, reservation);
     }
 
     // Send result
@@ -206,6 +234,13 @@ ${result.cached ? '⚡ Cached result' : '🔄 Fresh analysis'}
     });
 
   } catch (error) {
+    // The check failed before a verdict was delivered: refund the
+    // reservation so the user never pays for a check they didn't get
+    // (#410). If the reservation was already settled, release is a
+    // no-op in the RPC.
+    if (!isImpersonating) {
+      await releaseCredit(actingTelegramUserId, reservation, 'image_scan_failed');
+    }
     console.error('Image check error:', error);
     await ctx.reply('❌ Failed to analyze image. Please try again later.');
   }
