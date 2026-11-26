@@ -9,7 +9,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const credits = require('../src/utils/credits') as typeof import('../src/utils/credits');
-const { reserveCredit, settleCredit, releaseCredit, isMissingCreditFunctionError } = credits;
+const { reserveCredit, settleCredit, releaseCredit, isMissingCreditFunctionError, CreditServiceError } = credits;
 
 type Source = 'daily' | 'permanent';
 
@@ -23,7 +23,8 @@ interface LedgerRow {
 
 /**
  * In-memory model of the reserve/settle/release contract implemented by
- * supabase/migrations/20261125000000_atomic_credits.sql. Each rpc() call
+ * supabase/migrations/20261125000000_atomic_credits.sql as amended by
+ * supabase/migrations/20261126000000_credit_rpc_guards.sql. Each rpc() call
  * yields once (so parallel callers interleave like concurrent requests)
  * and then runs its state transition synchronously, mirroring the
  * atomicity of the single-statement conditional UPDATEs in the SQL.
@@ -34,6 +35,9 @@ class FakeCreditStore {
   ledger: LedgerRow[] = [];
   rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = [];
   forcedError: { code?: string; message: string } | null = null;
+  /** Per-function one-shot errors: the first call to fn fails, later calls run normally. */
+  failOnce: Record<string, { code?: string; message: string }> = {};
+  private spentFailures = new Set<string>();
 
   addUser(telegramId: string, daily: number, permanent: number): void {
     this.users.set(telegramId, { id: `uuid-${telegramId}`, daily, permanent });
@@ -47,6 +51,10 @@ class FakeCreditStore {
   async rpc(fn: string, args: Record<string, unknown>): Promise<{ data: any; error: any }> {
     this.rpcCalls.push({ fn, args });
     await new Promise(resolve => setImmediate(resolve));
+    if (this.failOnce[fn] && !this.spentFailures.has(fn)) {
+      this.spentFailures.add(fn);
+      return { data: null, error: this.failOnce[fn] };
+    }
     if (this.forcedError) return { data: null, error: this.forcedError };
     switch (fn) {
       case 'reserve_credit':
@@ -63,6 +71,9 @@ class FakeCreditStore {
   private reserve(args: Record<string, unknown>): any {
     const telegramId = args.p_telegram_user_id as string;
     const key = args.p_idempotency_key as string | null;
+    // Model of the guard added by 20261126000000_credit_rpc_guards.sql:
+    // a keyless reserve is rejected before any balance change.
+    if (!key) return { status: 'invalid_key', source: null };
     const user = this.users.get(telegramId);
     if (!user) return { status: 'no_user', source: null };
 
@@ -105,7 +116,9 @@ class FakeCreditStore {
     if (res.state !== 'reserved') return { status: `already_${res.state}`, source: res.source };
     res.state = 'released';
     const user = this.users.get(telegramId)!;
-    if (res.source === 'daily') user.daily += 1;
+    // Model of the cap added by 20261126000000_credit_rpc_guards.sql: a
+    // daily refund never pushes the balance above the reset allowance.
+    if (res.source === 'daily') user.daily = Math.min(user.daily + 1, 3);
     else user.permanent += 1;
     this.ledger.push({ userId: user.id, delta: 1, source: res.source, kind: 'refund', key });
     return { status: 'released', source: res.source };
@@ -273,16 +286,27 @@ async function run(): Promise<void> {
       assert.equal(legacyCalls, 1);
       assert.ok(errors.some(e => e.includes('legacy non-atomic')));
       // Settle/release on a legacy reservation must not call the RPC.
+      // Release instead runs the compensating legacy refund (#471
+      // review): the fallback debit is refundable after all.
       const callsBefore = store.rpcCalls.length;
+      const legacyReleases: Array<[string, string]> = [];
       await settleCredit('100', res, { rpc: store });
-      await releaseCredit('100', res, 'inconclusive', { rpc: store });
+      await releaseCredit('100', res, 'inconclusive', {
+        rpc: store,
+        legacyRelease: async (telegramId, source) => {
+          legacyReleases.push([telegramId, source]);
+        }
+      });
       assert.equal(store.rpcCalls.length, callsBefore);
+      assert.deepEqual(legacyReleases, [['100', 'permanent']]);
     } finally {
       console.error = origError;
     }
   }
 
-  // Any other RPC error ⇒ fail closed (no reservation), no fallback.
+  // Any other RPC error ⇒ NOT an empty balance (#471 review): after one
+  // retry the failure surfaces as a CreditServiceError so handlers can
+  // answer with a retryable error. No reservation, no fallback, no debit.
   {
     const store = new FakeCreditStore();
     store.addUser('100', 3, 3);
@@ -291,15 +315,89 @@ async function run(): Promise<void> {
     const origError = console.error;
     console.error = () => {};
     try {
-      const res = await reserveCredit('100', 'k1', 'link', freeUser(3, 3), {
-        rpc: store,
-        legacyConsume: async () => {
-          legacyCalls += 1;
-          return 'daily';
-        }
-      });
-      assert.equal(res, null);
+      await assert.rejects(
+        reserveCredit('100', 'k1', 'link', freeUser(3, 3), {
+          rpc: store,
+          legacyConsume: async () => {
+            legacyCalls += 1;
+            return 'daily';
+          }
+        }),
+        CreditServiceError
+      );
       assert.equal(legacyCalls, 0);
+      assert.equal(store.rpcCalls.filter(c => c.fn === 'reserve_credit').length, 2);
+      assert.deepEqual(store.balance('100'), { daily: 3, permanent: 3 });
+      assert.equal(store.ledger.length, 0);
+    } finally {
+      console.error = origError;
+    }
+  }
+
+  // Transient RPC failure: the idempotent reserve is retried once and
+  // the reservation succeeds.
+  {
+    const store = new FakeCreditStore();
+    store.addUser('100', 1, 0);
+    store.failOnce['reserve_credit'] = { code: 'XX000', message: 'connection reset' };
+    const res = await reserveCredit('100', 'k1', 'link', freeUser(1, 0), { rpc: store });
+    assert.equal(res?.source, 'daily');
+    assert.equal(res?.duplicate, undefined);
+    assert.equal(store.rpcCalls.filter(c => c.fn === 'reserve_credit').length, 2);
+    assert.deepEqual(store.balance('100'), { daily: 0, permanent: 0 });
+  }
+
+  // Lost reserve response (#471 review): the first attempt committed
+  // but its response was lost; the retry replays the reservation as a
+  // duplicate and reserveCredit ADOPTS it — it belongs to this request,
+  // so exactly one debit exists and the reservation can be settled.
+  {
+    const store = new FakeCreditStore();
+    store.addUser('100', 2, 0);
+    const first = await reserveCredit('100', 'lost-key', 'link', freeUser(2, 0), { rpc: store });
+    assert.equal(first?.source, 'daily');
+    store.failOnce['reserve_credit'] = { code: 'XX000', message: 'response lost' };
+    const adopted = await reserveCredit('100', 'lost-key', 'link', freeUser(2, 0), { rpc: store });
+    assert.equal(adopted?.duplicate, true);
+    assert.equal(adopted?.adopted, true);
+    assert.deepEqual(store.balance('100'), { daily: 1, permanent: 0 });
+    assert.equal(store.ledger.filter(r => r.kind === 'debit').length, 1);
+    await settleCredit('100', adopted, { rpc: store });
+    assert.equal(store.reservations.get('lost-key')?.state, 'settled');
+  }
+
+  // Settle and release each retry a transient RPC failure once.
+  {
+    const store = new FakeCreditStore();
+    store.addUser('100', 1, 0);
+    const res = await reserveCredit('100', 'k1', 'link', freeUser(1, 0), { rpc: store });
+    assert.ok(res);
+    store.failOnce['release_credit'] = { code: 'XX000', message: 'blip' };
+    await releaseCredit('100', res, 'inconclusive', { rpc: store });
+    assert.deepEqual(store.balance('100'), { daily: 1, permanent: 0 });
+    assert.deepEqual(store.ledger.map(r => r.kind), ['debit', 'refund']);
+    assert.equal(store.rpcCalls.filter(c => c.fn === 'release_credit').length, 2);
+
+    const res2 = await reserveCredit('100', 'k2', 'link', freeUser(1, 0), { rpc: store });
+    assert.ok(res2);
+    store.failOnce['settle_credit'] = { code: 'XX000', message: 'blip' };
+    await settleCredit('100', res2, { rpc: store });
+    assert.equal(store.reservations.get('k2')?.state, 'settled');
+    assert.equal(store.rpcCalls.filter(c => c.fn === 'settle_credit').length, 2);
+  }
+
+  // A keyless reserve is refused before any RPC call: a debit without a
+  // reservation could never be settled or refunded.
+  {
+    const store = new FakeCreditStore();
+    store.addUser('100', 1, 0);
+    const origError = console.error;
+    console.error = () => {};
+    try {
+      const res = await reserveCredit('100', '', 'link', freeUser(1, 0), { rpc: store });
+      assert.equal(res, null);
+      assert.equal(store.rpcCalls.length, 0);
+      assert.deepEqual(store.balance('100'), { daily: 1, permanent: 0 });
     } finally {
       console.error = origError;
     }
