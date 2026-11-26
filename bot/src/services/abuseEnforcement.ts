@@ -70,12 +70,21 @@ export async function checkAbuseAndEnforce(userId: string, client: SupabaseLike 
   // through the returned `error`, not by throwing. On failure, log an
   // explicit enforcement failure and stop — no audit entry, no success
   // report for an action that never landed.
+  // Enforcement calls can overlap (two flags landing together each run a
+  // call). A call works from counts and user state read at its start, so
+  // its write must not be able to downgrade a more severe action a
+  // concurrent call applied in the meantime (#470 review): the TEMP_BAN
+  // and THROTTLE writes below are conditional on the user still being
+  // unbanned at write time and verify a row actually changed, and the
+  // HARD_BAN write clears banned_until so no stale temp-ban expiry can
+  // ever unban a permanently banned user.
   if (totalFlags >= ABUSE_THRESHOLDS.HARD_BAN) {
     // Hard Ban
     const { error: updateError } = await client.from('users').update({
       is_banned: true,
       banned_reason: 'Automated: Exceeded hard abuse threshold',
-      banned_at: new Date().toISOString()
+      banned_at: new Date().toISOString(),
+      banned_until: null
     }).eq('id', userId);
 
     if (updateError) {
@@ -90,15 +99,25 @@ export async function checkAbuseAndEnforce(userId: string, client: SupabaseLike 
     // Temp Ban (7 days)
     const bannedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const { error: updateError } = await client.from('users').update({
+    const { data: updatedRows, error: updateError } = await client.from('users').update({
       is_banned: true,
       banned_reason: 'Automated: Temporary ban (7 days) for abuse',
       banned_at: new Date().toISOString(),
       banned_until: bannedUntil
-    }).eq('id', userId);
+    }).eq('id', userId).eq('is_banned', false).select('id');
 
     if (updateError) {
       console.error(`[Abuse Enforcement] ENFORCEMENT FAILURE: could not apply TEMP_BAN to user ${userId}:`, updateError);
+      return;
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      // No row matched the still-unbanned condition: a concurrent
+      // enforcement call banned this user first (at least as severe as
+      // this action). Its call writes the audit entry; this stale call
+      // must not overwrite the ban — in particular not a HARD_BAN, whose
+      // permanence this write would undo by setting banned_until.
+      console.log(`[Abuse Enforcement] TEMP_BAN for user ${userId} superseded by a concurrent ban; leaving the existing ban untouched.`);
       return;
     }
 
@@ -109,13 +128,21 @@ export async function checkAbuseAndEnforce(userId: string, client: SupabaseLike 
     // Throttle (24 hours)
     const throttledUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-    const { error: updateError } = await client.from('users').update({
+    const { data: updatedRows, error: updateError } = await client.from('users').update({
       is_throttled: true,
       throttled_until: throttledUntil
-    }).eq('id', userId);
+    }).eq('id', userId).eq('is_banned', false).select('id');
 
     if (updateError) {
       console.error(`[Abuse Enforcement] ENFORCEMENT FAILURE: could not apply THROTTLE to user ${userId}:`, updateError);
+      return;
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      // Banned by a concurrent enforcement call after this call read the
+      // user: a throttle is moot on a banned user, and claiming/auditing
+      // one here would misreport the user's actual state.
+      console.log(`[Abuse Enforcement] THROTTLE for user ${userId} superseded by a concurrent ban; leaving the existing state untouched.`);
       return;
     }
 
@@ -124,13 +151,23 @@ export async function checkAbuseAndEnforce(userId: string, client: SupabaseLike 
   }
 
   if (actionTaken) {
-    // Find an admin/owner to attribute this action to (system user)
-    const { data: admin } = await client
+    // Find an admin/owner to attribute this action to (system user). A
+    // failed or empty lookup must not pass silently (#470 review): the
+    // enforcement itself stands, but operators need to know it went
+    // unaudited rather than discover a missing admin_logs entry later.
+    const { data: admin, error: adminError } = await client
       .from('users')
       .select('id')
       .eq('role', 'owner')
       .limit(1)
       .single();
+
+    if (adminError || !admin) {
+      console.error(
+        `[Abuse Enforcement] ${actionTaken} on user ${userId} could not be audited: no owner account available to attribute the audit entry.`,
+        adminError ?? ''
+      );
+    }
 
     if (admin) {
       // Log the automated action. The enforcement write has already been
