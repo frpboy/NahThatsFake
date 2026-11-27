@@ -126,7 +126,7 @@ export async function processLinkCheck(ctx: Context) {
       
       // Only cache complete two-provider scans; partial detections are ephemeral.
       if (apiResult.scan_status === 'complete') {
-        await supabase.from('check_cache').insert({
+        const { error: cacheError } = await supabase.from('check_cache').insert({
         check_type: 'link',
         content_hash: urlHash,
         score: result.score,
@@ -134,11 +134,19 @@ export async function processLinkCheck(ctx: Context) {
         api_source: result.api_source,
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
         });
+        if (cacheError) {
+          console.error('Failed to save link check to cache:', cacheError);
+        }
       }
     }
 
     if (!isImpersonating) {
-      await supabase.from('checks').insert({
+      // The insert result MUST be checked: supabase-js reports write
+      // failures in the result, never by throwing, and an unchecked
+      // insert hid a broken checks trigger (every history row lost)
+      // for the app's whole life. A history failure still must not
+      // block the verdict, so log it loudly and continue.
+      const { error: historyError } = await supabase.from('checks').insert({
         user_id: dbUser.id,
         check_type: 'link',
         content_hash: urlHash,
@@ -148,6 +156,9 @@ export async function processLinkCheck(ctx: Context) {
         api_source: result.api_source,
         credit_source: creditSource
       });
+      if (historyError) {
+        console.error('Failed to record check history (link):', historyError);
+      }
     }
 
     // Send result. The reservation is settled only AFTER this reply
