@@ -144,7 +144,12 @@ export async function processImageCheck(ctx: Context) {
     }
 
     if (!isImpersonating && result) {
-      await supabase.from('checks').insert({
+      // The insert result MUST be checked: supabase-js reports write
+      // failures in the result, never by throwing, and an unchecked
+      // insert hid a broken checks trigger (every history row lost)
+      // for the app's whole life. A history failure still must not
+      // block the verdict, so log it loudly and continue.
+      const { error: historyError } = await supabase.from('checks').insert({
         user_id: dbUser.id,
         check_type: 'image',
         content_hash: imageHash,
@@ -154,6 +159,9 @@ export async function processImageCheck(ctx: Context) {
         api_source: result.api_source,
         credit_source: creditSource
       });
+      if (historyError) {
+        console.error('Failed to record check history (image):', historyError);
+      }
     }
 
     // Caption link present: report the image check and the link check as
@@ -170,7 +178,7 @@ export async function processImageCheck(ctx: Context) {
           const urlHash = crypto.createHash('sha256')
             .update(`urlscanner-v2:${captionUrl.toLowerCase().trim()}`)
             .digest('hex');
-          await supabase.from('checks').insert({
+          const { error: linkHistoryError } = await supabase.from('checks').insert({
             user_id: dbUser.id,
             check_type: 'link',
             content_hash: urlHash,
@@ -180,6 +188,9 @@ export async function processImageCheck(ctx: Context) {
             api_source: linkResult.sources.join(', ') || 'unknown',
             credit_source: creditSource
           });
+          if (linkHistoryError) {
+            console.error('Failed to record check history (caption link):', linkHistoryError);
+          }
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : '';
