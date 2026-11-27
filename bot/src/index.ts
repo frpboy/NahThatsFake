@@ -656,6 +656,17 @@ bot.command('stats', async (ctx) => {
   });
 });
 
+// Command: /users
+bot.command('users', async (ctx) => {
+  if (!ctx.from || !await isAdmin(ctx.from.id.toString(), (ctx as any).state?.role)) return;
+
+  const { count: users } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true });
+
+  await ctx.reply(`👥 *Total Users*\n\nUsers: ${users ?? 0}`, { parse_mode: 'Markdown' });
+});
+
 // Command: /ban <id> <reason>
 bot.command('ban', async (ctx) => {
   if (!ctx.from || !await isAdmin(ctx.from.id.toString(), (ctx as any).state?.role)) return;
