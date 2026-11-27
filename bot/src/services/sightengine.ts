@@ -207,7 +207,9 @@ export async function saveImageCache(
   apiSource: string
 ): Promise<void> {
   try {
-    await supabase.from('check_cache').insert({
+    // supabase-js reports write failures in the result, never by
+    // throwing, so the catch below alone would silently drop them.
+    const { error } = await supabase.from('check_cache').insert({
       check_type: 'image',
       content_hash: imageCacheKey(imageHash),
       score,
@@ -215,6 +217,9 @@ export async function saveImageCache(
       api_source: apiSource,
       expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days
     });
+    if (error) {
+      console.error('Cache save error:', error);
+    }
   } catch (error) {
     console.error('Cache save error:', error);
     // Don't throw - cache failure shouldn't break the main flow
