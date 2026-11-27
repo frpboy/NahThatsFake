@@ -5,8 +5,8 @@
   "name": "nahthatsfake",
   "private": true,
   "scripts": {
-    "test": "npm --prefix tma test && npm --prefix bot run build && npm --prefix bot run test:markdown && npm --prefix bot run test:urlscanner && npm --prefix bot run test:sightengine && npm --prefix bot run test:separate-results && npm --prefix bot run test:payment-shutdown && npm --prefix bot run test:credits && npm --prefix bot run test:abuse && npm --prefix bot run test:handlers",
-    "test:bot": "npm --prefix bot run build && npm --prefix bot run test:markdown && npm --prefix bot run test:urlscanner && npm --prefix bot run test:sightengine && npm --prefix bot run test:separate-results && npm --prefix bot run test:payment-shutdown && npm --prefix bot run test:credits && npm --prefix bot run test:abuse && npm --prefix bot run test:handlers",
+    "test": "npm --prefix tma test && npm --prefix bot run build && npm --prefix bot run test:markdown && npm --prefix bot run test:urlscanner && npm --prefix bot run test:sightengine && npm --prefix bot run test:separate-results && npm --prefix bot run test:payment-shutdown && npm --prefix bot run test:credits && npm --prefix bot run test:abuse && npm --prefix bot run test:handlers && npm --prefix bot run test:routing",
+    "test:bot": "npm --prefix bot run build && npm --prefix bot run test:markdown && npm --prefix bot run test:urlscanner && npm --prefix bot run test:sightengine && npm --prefix bot run test:separate-results && npm --prefix bot run test:payment-shutdown && npm --prefix bot run test:credits && npm --prefix bot run test:abuse && npm --prefix bot run test:handlers && npm --prefix bot run test:routing",
     "test:tma": "npm --prefix tma test"
   },
   "version": "1.0.0"
