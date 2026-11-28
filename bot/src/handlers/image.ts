@@ -3,6 +3,7 @@ import { Context } from 'grammy';
 import { supabase } from '../supabase';
 import { checkCredits, reserveCredit, settleCredit, releaseCredit, CreditReservation } from '../utils/credits';
 import { detectDeepfake, checkImageCache, saveImageCache } from '../services/sightengine';
+import { analyzeProvenance, formatProvenanceSection, ProvenanceResult } from '../services/provenance';
 import { checkUrlSafety } from '../services/urlscanner';
 import {
   buildSeparateCheckResults,
@@ -109,6 +110,20 @@ export async function processImageCheck(ctx: Context) {
     // Generate hash for caching
     const imageHash = crypto.createHash('sha256').update(imageBuffer).digest('hex');
 
+    // Provenance (C2PA Content Credentials + metadata) runs alongside
+    // the Sightengine verdict and settles independently: it is evidence
+    // about where the file came from, never a verdict, it is part of
+    // this same single image check (no extra credit), and a provenance
+    // failure must never fail the check. analyzeProvenance never
+    // throws; the catch is belt-and-braces.
+    let provenance: ProvenanceResult | null = null;
+    try {
+      provenance = await analyzeProvenance(imageBuffer, photo ? 'photo' : 'document');
+    } catch (provenanceError) {
+      console.error('Provenance check failed:', provenanceError);
+    }
+    const provenanceSection = provenance ? `\n\n${formatProvenanceSection(provenance)}` : '';
+
     // Check cache
     const cached = await checkImageCache(imageHash);
 
@@ -209,7 +224,7 @@ export async function processImageCheck(ctx: Context) {
       // released (#471 review). If the reply throws, the catch releases
       // the still-open reservation.
       const separate = buildSeparateCheckResults({ image: imageOutcome, link: linkOutcome });
-      await ctx.reply(formatSeparateCheckResults(separate), { parse_mode: 'Markdown' });
+      await ctx.reply(formatSeparateCheckResults(separate) + provenanceSection, { parse_mode: 'Markdown' });
 
       // One credit covers the whole message. If at least one of the two
       // checks produced a verdict, settle; if both ended inconclusive,
@@ -248,7 +263,7 @@ Artificial Probability: *${scorePercent}%*
 
 ${result.cached ? '⚡ Cached result' : '🔄 Fresh analysis'}
 
-⚠️ *Always verify sources yourself!*`, {
+⚠️ *Always verify sources yourself!*${provenanceSection}`, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
