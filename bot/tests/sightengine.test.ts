@@ -20,20 +20,34 @@ const {
 const axios = require('axios') as { post: unknown };
 
 async function run(): Promise<void> {
-  // Source-level request-shape pin, in the repo's source-test style: the
-  // check.json call in sightengine.ts must request models genai and must
-  // never again carry a workflow parameter (see the runtime pin below).
+  // Source-level request-shape pins, in the repo's source-test style: the
+  // check.json call in sightengine.ts must request models genai as a
+  // multipart form field, must never again carry a workflow parameter, and
+  // must not regress to a base64 field or a urlencoded Content-Type (see
+  // the runtime pin below).
   const sightengineSource = fs.readFileSync(
     path.join(__dirname, '../src/services/sightengine.ts'),
     'utf8'
   );
   assert.ok(
-    sightengineSource.includes("'models': 'genai'"),
+    sightengineSource.includes("append('models', 'genai')"),
     'sightengine check.json request must specify models genai'
   );
   assert.ok(
     !sightengineSource.includes("'workflow'"),
     'sightengine check.json request must not contain a workflow parameter'
+  );
+  assert.ok(
+    sightengineSource.includes("append('media'"),
+    'sightengine check.json request must send the image as a multipart media file field'
+  );
+  assert.ok(
+    !sightengineSource.includes("'base64'"),
+    'sightengine check.json request must not send a base64 field'
+  );
+  assert.ok(
+    !sightengineSource.includes('application/x-www-form-urlencoded'),
+    'sightengine check.json request must not declare a urlencoded Content-Type'
   );
 
   // Error status: never a verdict.
@@ -110,23 +124,44 @@ async function run(): Promise<void> {
     assert.equal(verdict.risk_level, 'HIGH');
     assert.equal(verdict.score, 0.9);
 
-    // Request shape pin (2026-11-28 live failure): detectDeepfake POSTs to
-    // the plain check.json path, which rejects any request that also carries
-    // a workflow id (Sightengine HTTP 400, argument_error code 2004:
-    // "You specified a workflow id in your request but used a non-workflow
-    // API path"). The payload must carry models=genai and NO workflow key.
+    // Request shape pins (2026-11-28 live failures): detectDeepfake POSTs
+    // to the plain check.json path, which rejects any request that also
+    // carries a workflow id (Sightengine HTTP 400, argument_error code
+    // 2004: "You specified a workflow id in your request but used a
+    // non-workflow API path"), and rejects a body that is not correctly
+    // encoded form data (HTTP 400, argument_error code 1041) — the old
+    // code declared application/x-www-form-urlencoded while axios sent a
+    // JSON body with a base64 field. The request must be a multipart
+    // FormData carrying the image as a `media` file field, the API
+    // credentials, models=genai, NO workflow entry, and no manually set
+    // Content-Type header (axios must generate the multipart boundary).
     let capturedUrl: unknown;
     let capturedPayload: unknown;
-    axios.post = async (url: unknown, payload: unknown) => {
+    let capturedConfig: unknown;
+    axios.post = async (url: unknown, payload: unknown, config: unknown) => {
       capturedUrl = url;
       capturedPayload = payload;
+      capturedConfig = config;
       return { data: { status: 'success', scores: { synthetic: 0.1, human: 0.9 } } };
     };
     await detectDeepfake(Buffer.from('fake-image'));
     assert.equal(capturedUrl, 'https://api.sightengine.com/1.0/check.json');
-    const payload = capturedPayload as Record<string, unknown>;
-    assert.equal(payload['models'], 'genai');
-    assert.ok(!('workflow' in payload), 'check.json request must not contain a workflow parameter');
+    assert.ok(capturedPayload instanceof FormData, 'check.json request body must be a FormData');
+    const form = capturedPayload as FormData;
+    assert.equal(form.get('models'), 'genai');
+    assert.equal(form.get('api_user'), process.env.SIGHTENGINE_API_KEY);
+    assert.equal(form.get('api_secret'), process.env.SIGHTENGINE_API_SECRET);
+    const media = form.get('media') as { size?: unknown } | null;
+    assert.ok(media, 'check.json request must carry a media file field');
+    assert.equal(typeof media.size, 'number');
+    assert.ok((media.size as number) > 0, 'media file field must not be empty');
+    assert.equal(form.get('workflow'), null, 'check.json request must not contain a workflow parameter');
+    assert.equal(form.get('base64'), null, 'check.json request must not contain a base64 field');
+    const config = capturedConfig as { headers?: Record<string, unknown> } | undefined;
+    assert.ok(
+      !config?.headers || !('Content-Type' in config.headers),
+      'check.json request must not set a Content-Type header manually'
+    );
   } finally {
     axios.post = originalPost;
   }
