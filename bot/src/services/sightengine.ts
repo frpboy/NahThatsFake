@@ -96,19 +96,19 @@ export async function detectDeepfake(imageBuffer: Buffer): Promise<{
 
   let data: SightengineResponse;
   try {
-    // Convert buffer to base64
-    const base64Image = imageBuffer.toString('base64');
+    // Sightengine's check.json expects multipart/form-data with the image
+    // as a file field named `media`. A JSON body (axios's default for a
+    // plain object) does not match a declared form encoding and is
+    // rejected with argument_error 1041, so build a real form instead and
+    // let axios set the multipart Content-Type with its boundary.
+    const form = new FormData();
+    form.append('media', new Blob([new Uint8Array(imageBuffer)], { type: 'image/jpeg' }), 'image.jpg');
+    form.append('api_user', apiKey);
+    form.append('api_secret', apiSecret);
+    form.append('models', 'genai');
 
     // Call Sightengine API
-    const response = await axios.post('https://api.sightengine.com/1.0/check.json', {
-      'api_user': apiKey,
-      'api_secret': apiSecret,
-      'models': 'genai',
-      'base64': base64Image
-    }, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
+    const response = await axios.post('https://api.sightengine.com/1.0/check.json', form, {
       timeout: 30000 // 30 second timeout
     });
 
