@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // sightengine.ts builds a Supabase client at import time; give it harmless
 // dummy values so the module loads without real credentials. The functions
@@ -18,6 +20,22 @@ const {
 const axios = require('axios') as { post: unknown };
 
 async function run(): Promise<void> {
+  // Source-level request-shape pin, in the repo's source-test style: the
+  // check.json call in sightengine.ts must request models genai and must
+  // never again carry a workflow parameter (see the runtime pin below).
+  const sightengineSource = fs.readFileSync(
+    path.join(__dirname, '../src/services/sightengine.ts'),
+    'utf8'
+  );
+  assert.ok(
+    sightengineSource.includes("'models': 'genai'"),
+    'sightengine check.json request must specify models genai'
+  );
+  assert.ok(
+    !sightengineSource.includes("'workflow'"),
+    'sightengine check.json request must not contain a workflow parameter'
+  );
+
   // Error status: never a verdict.
   assert.throws(
     () => validateSightengineScores({ status: 'error', scores: { synthetic: 0.1, human: 0.9 } }),
@@ -91,6 +109,24 @@ async function run(): Promise<void> {
     const verdict = await detectDeepfake(Buffer.from('fake-image'));
     assert.equal(verdict.risk_level, 'HIGH');
     assert.equal(verdict.score, 0.9);
+
+    // Request shape pin (2026-11-28 live failure): detectDeepfake POSTs to
+    // the plain check.json path, which rejects any request that also carries
+    // a workflow id (Sightengine HTTP 400, argument_error code 2004:
+    // "You specified a workflow id in your request but used a non-workflow
+    // API path"). The payload must carry models=genai and NO workflow key.
+    let capturedUrl: unknown;
+    let capturedPayload: unknown;
+    axios.post = async (url: unknown, payload: unknown) => {
+      capturedUrl = url;
+      capturedPayload = payload;
+      return { data: { status: 'success', scores: { synthetic: 0.1, human: 0.9 } } };
+    };
+    await detectDeepfake(Buffer.from('fake-image'));
+    assert.equal(capturedUrl, 'https://api.sightengine.com/1.0/check.json');
+    const payload = capturedPayload as Record<string, unknown>;
+    assert.equal(payload['models'], 'genai');
+    assert.ok(!('workflow' in payload), 'check.json request must not contain a workflow parameter');
   } finally {
     axios.post = originalPost;
   }

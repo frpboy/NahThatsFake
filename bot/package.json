@@ -17,7 +17,8 @@
     "test:credits": "ts-node --project tsconfig.test.json tests/credits.test.ts",
     "test:abuse": "ts-node --project tsconfig.test.json tests/abuse.test.ts",
     "test:handlers": "ts-node --project tsconfig.test.json tests/handler-outcomes.test.ts",
-    "test:routing": "ts-node --project tsconfig.test.json tests/command-routing.test.ts"
+    "test:routing": "ts-node --project tsconfig.test.json tests/command-routing.test.ts",
+    "test:provenance": "ts-node --project tsconfig.test.json tests/provenance.test.ts"
   },
   "keywords": [
     "telegram",
@@ -33,6 +34,7 @@
     "@types/node-cron": "^3.0.11",
     "axios": "^1.13.5",
     "dotenv": "^17.3.1",
+    "exifr": "^7.1.3",
     "grammy": "^1.40.0",
     "node-cron": "^4.2.1"
   },

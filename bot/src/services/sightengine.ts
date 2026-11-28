@@ -104,8 +104,7 @@ export async function detectDeepfake(imageBuffer: Buffer): Promise<{
       'api_user': apiKey,
       'api_secret': apiSecret,
       'models': 'genai',
-      'base64': base64Image,
-      'workflow': 'standard'
+      'base64': base64Image
     }, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
