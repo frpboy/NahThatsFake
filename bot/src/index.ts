@@ -132,11 +132,18 @@ bot.use(async (ctx, next) => {
   if (!user) return next();
 
   // Fetch role and ban/throttle status in one go to prevent N+1 queries
-  const { data } = await supabase
+  const { data, error: userLookupError } = await supabase
     .from('users')
     .select('role, is_banned, banned_reason, banned_until, is_throttled, throttled_until, consent_given, referral_code')
     .eq('telegram_user_id', user.id.toString())
     .maybeSingle();
+
+  // Never fail silently: a failed lookup (e.g. a missing users column)
+  // makes the bot treat a known user as a stranger with no consent,
+  // which caused the 2026-11-28 production consent loop.
+  if (userLookupError) {
+    console.error(`Failed to load user record for telegram user ${user.id}: ${userLookupError.message}`);
+  }
 
   (ctx as any).state.role = data?.role || 'user';
   (ctx as any).state.userRecord = data || null;
@@ -1716,13 +1723,19 @@ bot.on('callback_query', async (ctx) => {
     const user = ctx.from;
     if (!user) return;
 
-    await supabase
+    const { error: consentError } = await supabase
       .from('users')
-      .update({ 
-        consent_given: true, 
-        consent_at: new Date().toISOString() 
+      .update({
+        consent_given: true,
+        consent_at: new Date().toISOString()
       })
       .eq('telegram_user_id', user.id.toString());
+
+    if (consentError) {
+      console.error(`Failed to record consent for telegram user ${user.id}: ${consentError.message}`);
+      await ctx.answerCallbackQuery('❌ Could not record consent, please try again');
+      return;
+    }
 
     await ctx.answerCallbackQuery('✅ Consent recorded!');
     await ctx.editMessageText('🎉 Thank you! You can now send images and links for checking.');
